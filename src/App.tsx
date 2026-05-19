@@ -1114,7 +1114,7 @@ function Dashboard({
                     <Activity className="w-5 h-5" />
                   </div>
                   <h2 className="text-xl font-black text-slate-900 dark:text-white">
-                    Hành trình vĩ đại của tôi
+                    Hành trình của tôi...
                   </h2>
                 </div>
 
@@ -1478,7 +1478,11 @@ function Dashboard({
                           </td>
                           <td className="px-6 py-5 text-right">
                             <button
-                              onClick={() => deleteMetric(m.id)}
+                              onClick={() => {
+                                if (window.confirm("Bạn có chắc chắn muốn xoá dữ liệu này?")) {
+                                  deleteMetric(m.id);
+                                }
+                              }}
                               className="text-slate-300 dark:text-slate-600 hover:text-rose-500 dark:hover:text-rose-400 transition-colors p-2.5 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-900/30 sm:opacity-0 group-hover:opacity-100"
                               title="Xoá dữ liệu này"
                             >
