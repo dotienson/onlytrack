@@ -168,7 +168,7 @@ export default function App() {
 
   const handleGuestLogin = () => {
     if (!passcode.endsWith("6") || !/[a-zA-Z]/.test(passcode) || !/[0-9]/.test(passcode)) {
-      setPasscodeError("Mã kết nối không hợp lệ. Phải bao gồm chữ, số và kết thúc bằng số 6.");
+      setPasscodeError("Mã kết nối không hợp lệ.");
       return;
     }
     setPasscodeError("");
