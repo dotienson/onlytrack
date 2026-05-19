@@ -1,22 +1,24 @@
-import { useState, useEffect } from 'react';
-import { auth, db } from '../firebase';
-import { 
-  collection, 
-  query, 
-  orderBy, 
+import { useState, useEffect } from "react";
+import { auth, db } from "../firebase";
+import {
+  collection,
+  query,
+  orderBy,
   onSnapshot,
   doc,
   setDoc,
   serverTimestamp,
-  deleteDoc
-} from 'firebase/firestore';
-import { User } from 'firebase/auth';
+  deleteDoc,
+  getDocs,
+} from "firebase/firestore";
+import { User } from "firebase/auth";
 
 export interface Metric {
   id: string;
   userId: string;
   weight: number;
   waist?: number;
+  height?: number;
   bmi?: number;
   note?: string;
   date: string;
@@ -26,6 +28,7 @@ export interface Metric {
 export interface UserProfile {
   userId: string;
   height?: number;
+  targetWeight?: number;
   nickname?: string;
   slogan?: string;
   targetDate?: string;
@@ -34,12 +37,12 @@ export interface UserProfile {
 }
 
 export enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
+  CREATE = "create",
+  UPDATE = "update",
+  DELETE = "delete",
+  LIST = "list",
+  GET = "get",
+  WRITE = "write",
 }
 
 interface FirestoreErrorInfo {
@@ -49,7 +52,11 @@ interface FirestoreErrorInfo {
   authInfo: any;
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null,
+) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -58,15 +65,15 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
       emailVerified: auth.currentUser?.emailVerified,
     },
     operationType,
-    path
+    path,
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  console.error("Firestore Error: ", JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
 
 // Local Storage Keys
-const LS_PROFILE_KEY = 'betteryou_profile';
-const LS_METRICS_KEY = 'betteryou_metrics';
+const LS_PROFILE_KEY = "betteryou_profile";
+const LS_METRICS_KEY = "betteryou_metrics";
 
 export function useMetrics(user: User | null, isGuest: boolean) {
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -75,7 +82,12 @@ export function useMetrics(user: User | null, isGuest: boolean) {
 
   // Sync state when working locally
   const saveLocalProfile = (p: Partial<UserProfile>) => {
-    const newProfile = { ...profile, ...p, userId: 'local', updatedAt: new Date().toISOString() } as UserProfile;
+    const newProfile = {
+      ...profile,
+      ...p,
+      userId: "local",
+      updatedAt: new Date().toISOString(),
+    } as UserProfile;
     localStorage.setItem(LS_PROFILE_KEY, JSON.stringify(newProfile));
     setProfile(newProfile);
   };
@@ -92,7 +104,10 @@ export function useMetrics(user: User | null, isGuest: boolean) {
       if (storedProfile) {
         setProfile(JSON.parse(storedProfile));
       } else {
-        const initialProfile: UserProfile = { userId: 'local', updatedAt: new Date().toISOString() };
+        const initialProfile: UserProfile = {
+          userId: "local",
+          updatedAt: new Date().toISOString(),
+        };
         localStorage.setItem(LS_PROFILE_KEY, JSON.stringify(initialProfile));
         setProfile(initialProfile);
       }
@@ -111,36 +126,48 @@ export function useMetrics(user: User | null, isGuest: boolean) {
       setLoading(false);
       return;
     }
-    
+
     if (user) {
       setLoading(true);
       const profilePath = `users/${user.uid}`;
-      
+
       // Subscribe to profile
-      const unsubProfile = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
-        if (docSnap.exists()) {
-          setProfile(docSnap.data() as UserProfile);
-        } else {
-          // Create initial profile if missing
-          setDoc(doc(db, 'users', user.uid), {
-            userId: user.uid,
-            updatedAt: serverTimestamp()
-          }).catch(err => handleFirestoreError(err, OperationType.CREATE, profilePath));
-        }
-      }, (error) => {
-        handleFirestoreError(error, OperationType.GET, profilePath);
-      });
+      const unsubProfile = onSnapshot(
+        doc(db, "users", user.uid),
+        (docSnap) => {
+          if (docSnap.exists()) {
+            setProfile(docSnap.data() as UserProfile);
+          } else {
+            // Create initial profile if missing
+            setDoc(doc(db, "users", user.uid), {
+              userId: user.uid,
+              updatedAt: serverTimestamp(),
+            }).catch((err) =>
+              handleFirestoreError(err, OperationType.CREATE, profilePath),
+            );
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, profilePath);
+        },
+      );
 
       const metricsPath = `users/${user.uid}/metrics`;
-      const q = query(collection(db, metricsPath), orderBy('date', 'asc'));
+      const q = query(collection(db, metricsPath), orderBy("date", "asc"));
 
-      const unsubMetrics = onSnapshot(q, (snapshot) => {
-        const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Metric));
-        setMetrics(data);
-        setLoading(false);
-      }, (error) => {
-        handleFirestoreError(error, OperationType.LIST, metricsPath);
-      });
+      const unsubMetrics = onSnapshot(
+        q,
+        (snapshot) => {
+          const data = snapshot.docs.map(
+            (d) => ({ id: d.id, ...d.data() }) as Metric,
+          );
+          setMetrics(data);
+          setLoading(false);
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.LIST, metricsPath);
+        },
+      );
 
       return () => {
         unsubProfile();
@@ -149,31 +176,41 @@ export function useMetrics(user: User | null, isGuest: boolean) {
     }
   }, [user, isGuest]);
 
-  const addMetric = async (weight: number, waist?: number, dateStr?: string, note?: string) => {
-    const date = dateStr || new Date().toISOString().split('T')[0];
-    const metricId = date.replace(/-/g, ''); // unique ID per date
-    
+  const addMetric = async (
+    weight: number,
+    height?: number,
+    waist?: number,
+    dateStr?: string,
+    note?: string,
+  ) => {
+    const date = dateStr || new Date().toISOString().split("T")[0];
+    const metricId = date.replace(/-/g, ""); // unique ID per date
+
     let bmi;
-    if (profile?.height) {
-      const heightInMeters = profile.height / 100;
+    const finalHeight = height || profile?.height;
+    if (finalHeight) {
+      const heightInMeters = finalHeight / 100;
       bmi = parseFloat((weight / (heightInMeters * heightInMeters)).toFixed(1));
     }
 
     if (isGuest && !user) {
       const newMetric: Metric = {
         id: metricId,
-        userId: 'local',
+        userId: "local",
         weight,
         date,
         waist,
+        height: finalHeight,
         bmi,
         note,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
-      
-      const updatedMetrics = [...metrics.filter(m => m.id !== metricId), newMetric]
-        .sort((a, b) => a.date.localeCompare(b.date));
-      
+
+      const updatedMetrics = [
+        ...metrics.filter((m) => m.id !== metricId),
+        newMetric,
+      ].sort((a, b) => a.date.localeCompare(b.date));
+
       saveLocalMetrics(updatedMetrics);
       return;
     }
@@ -183,15 +220,16 @@ export function useMetrics(user: User | null, isGuest: boolean) {
         userId: user.uid,
         weight,
         date,
-        timestamp: serverTimestamp()
+        timestamp: serverTimestamp(),
       };
       if (waist) data.waist = waist;
+      if (finalHeight) data.height = finalHeight;
       if (bmi) data.bmi = bmi;
       if (note) data.note = note;
 
       const pathForWrite = `users/${user.uid}/metrics/${metricId}`;
       try {
-        await setDoc(doc(db, 'users', user.uid, 'metrics', metricId), data);
+        await setDoc(doc(db, "users", user.uid, "metrics", metricId), data);
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, pathForWrite);
       }
@@ -200,39 +238,84 @@ export function useMetrics(user: User | null, isGuest: boolean) {
 
   const deleteMetric = async (metricId: string) => {
     if (isGuest && !user) {
-      saveLocalMetrics(metrics.filter(m => m.id !== metricId));
+      saveLocalMetrics(metrics.filter((m) => m.id !== metricId));
       return;
     }
-    
+
     if (user) {
       const path = `users/${user.uid}/metrics/${metricId}`;
       try {
-        await deleteDoc(doc(db, 'users', user.uid, 'metrics', metricId));
+        await deleteDoc(doc(db, "users", user.uid, "metrics", metricId));
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, path);
       }
     }
-  }
+  };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (isGuest && !user) {
       saveLocalProfile(updates);
       return;
     }
-    
+
     if (user) {
       const pathForWrite = `users/${user.uid}`;
       try {
-        await setDoc(doc(db, 'users', user.uid), {
-          ...updates,
-          userId: user.uid,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
+        await setDoc(
+          doc(db, "users", user.uid),
+          {
+            ...updates,
+            userId: user.uid,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, pathForWrite);
       }
     }
   };
 
-  return { metrics, profile, loading, addMetric, deleteMetric, updateProfile };
+  const importLocalData = (importedMetrics: Metric[], importedProfile: UserProfile) => {
+    if (isGuest && !user) {
+      if (importedMetrics) saveLocalMetrics(importedMetrics);
+      if (importedProfile) saveLocalProfile(importedProfile);
+    }
+  };
+
+  const clearData = async () => {
+    if (isGuest && !user) {
+      localStorage.removeItem(LS_METRICS_KEY);
+      localStorage.removeItem(LS_PROFILE_KEY);
+      setMetrics([]);
+      setProfile(null);
+      return;
+    }
+
+    if (user) {
+      try {
+        const metricsRef = collection(db, `users/${user.uid}/metrics`);
+        const q = query(metricsRef);
+        const querySnapshot = await getDocs(q);
+        const deletePromises = querySnapshot.docs.map((document) =>
+          deleteDoc(doc(db, `users/${user.uid}/metrics`, document.id)),
+        );
+        await Promise.all(deletePromises);
+        await deleteDoc(doc(db, "users", user.uid));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `users/${user.uid}`);
+      }
+    }
+  };
+
+  return {
+    metrics,
+    profile,
+    loading,
+    addMetric,
+    deleteMetric,
+    updateProfile,
+    clearData,
+    importLocalData,
+  };
 }

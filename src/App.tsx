@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, signIn, signOut, testConnection } from "./firebase";
 import { useMetrics, Metric, UserProfile } from "./hooks/useMetrics";
@@ -11,6 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  ReferenceLine,
 } from "recharts";
 import {
   LogOut,
@@ -27,6 +28,14 @@ import {
   Bell,
   UserCircle,
   Apple,
+  Eye,
+  EyeOff,
+  Sun,
+  Moon,
+  AlertTriangle,
+  Share2,
+  Download,
+  Upload,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { clsx, type ClassValue } from "clsx";
@@ -193,36 +202,15 @@ export default function App() {
             </p>
           </div>
 
-          <p className="text-slate-500 mb-8 leading-relaxed max-w-sm mx-auto">
-            Ứng dụng chuyên dùng theo dõi hành trình thay đổi sức vóc của bạn.
-            Thông tin sẽ được đồng bộ nếu đăng nhập với Google
-          </p>
-
           <div className="space-y-4">
             <button
-              onClick={signIn}
-              className="w-full py-4 px-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-2xl font-bold transition-all shadow-md hover:shadow-lg active:scale-[0.98]"
-            >
-              Đăng nhập với Google
-            </button>
-
-            <div className="relative flex items-center py-2">
-              <div className="flex-grow border-t border-slate-200"></div>
-              <span className="flex-shrink-0 mx-4 text-slate-400 text-sm">
-                hoặc
-              </span>
-              <div className="flex-grow border-t border-slate-200"></div>
-            </div>
-
-            <button
               onClick={handleGuestLogin}
-              className="w-full py-4 px-4 bg-white border-2 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50 text-slate-700 rounded-2xl font-bold transition-all active:scale-[0.98]"
+              className="w-full py-4 px-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-2xl font-bold transition-all shadow-md hover:shadow-lg active:scale-[0.98]"
             >
               Bắt đầu ngay không cần tài khoản
             </button>
             <p className="text-xs text-slate-400 mt-2">
-              Khi lựa chọn bắt đầu ngay, dữ liệu sẽ chỉ lưu trên thiết bị này và
-              không đồng bộ khi đổi thiết bị khác
+              Lưu ý: Để đảm bảo bí mật riêng tư: Dữ liệu chỉ lưu trên 01 thiết bị (thiết bị đang hiển thị). Thay đổi thiết bị sẽ không đồng bộ được dữ liệu đã nhập.
             </p>
           </div>
         </div>
@@ -242,14 +230,23 @@ function Dashboard({
   isGuest: boolean;
   onLogout: () => void;
 }) {
-  const { metrics, profile, loading, addMetric, deleteMetric, updateProfile } =
-    useMetrics(user, isGuest);
+  const {
+    metrics,
+    profile,
+    loading,
+    addMetric,
+    deleteMetric,
+    updateProfile,
+    clearData,
+    importLocalData,
+  } = useMetrics(user, isGuest);
 
   const [weight, setWeight] = useState("");
   const [waist, setWaist] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [height, setHeight] = useState("");
+  const [targetWeight, setTargetWeight] = useState("");
   const [nickname, setNickname] = useState("");
   const [slogan, setSlogan] = useState("");
   const [targetDate, setTargetDate] = useState("");
@@ -262,25 +259,28 @@ function Dashboard({
     "weight",
   );
 
-  const isProfileComplete =
-    profile?.height && profile?.nickname && profile?.slogan;
-  const [showProfile, setShowProfile] = useState(true);
+  const [showStats, setShowStats] = useState(false);
+
+  const isProfileComplete = profile?.nickname && profile?.slogan;
+  const [showAccountModal, setShowAccountModal] = useState(false);
 
   useEffect(() => {
     if (profile) {
-      if (profile.height && height === "") setHeight(profile.height.toString());
       if (profile.nickname && nickname === "") setNickname(profile.nickname);
       if (profile.slogan && slogan === "") setSlogan(profile.slogan);
       if (profile.targetDate && targetDate === "")
         setTargetDate(profile.targetDate);
       if (profile.targetEvent && targetEvent === "")
         setTargetEvent(profile.targetEvent);
-
-      if (profile.height && profile.nickname && profile.slogan) {
-        setShowProfile(false);
-      }
+      if (profile.targetWeight && targetWeight === "")
+        setTargetWeight(profile.targetWeight.toString());
     }
   }, [profile]);
+
+  useEffect(() => {
+    // If no height is set in input and we lack height but have profile height, we can seed it initially
+    if (height === "" && profile?.height) setHeight(profile.height.toString());
+  }, [profile?.height]);
 
   useEffect(() => {
     // Request notification permission and show reminder
@@ -307,8 +307,11 @@ function Dashboard({
     setSavingMetric(true);
 
     const parsedWeight = parseFloat(weight);
+    const parsedHeight = height ? parseFloat(height) : undefined;
+
     await addMetric(
       parsedWeight,
+      parsedHeight,
       waist ? parseFloat(waist) : undefined,
       date,
       note,
@@ -351,44 +354,134 @@ function Dashboard({
     setNote("");
   };
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportData = () => {
+    try {
+      const dataToExport = {
+        metrics,
+        profile
+      };
+      const jsonString = JSON.stringify(dataToExport, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `betteryou_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Lỗi khi tải dữ liệu:", err);
+      alert("Đã xảy ra lỗi khi tải dữ liệu.");
+    }
+  };
+
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const content = event.target?.result as string;
+        const parsed = JSON.parse(content);
+        
+        let importedMetrics: any = null;
+        let importedProfile: any = null;
+        if (parsed.metrics) {
+            importedMetrics = parsed.metrics;
+        }
+        if (parsed.profile) {
+            importedProfile = parsed.profile;
+        }
+        
+        if (importedMetrics || importedProfile) {
+            importLocalData(importedMetrics, importedProfile);
+            alert("Khôi phục dữ liệu thành công! 🥳");
+            window.location.reload();
+        } else {
+             alert("File dữ liệu không hợp lệ. Vui lòng kiểm tra lại.");
+        }
+      } catch (err) {
+        console.error("Lỗi đọc file:", err);
+        alert("File dữ liệu không hợp lệ. Vui lòng kiểm tra lại.");
+      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+    reader.readAsText(file);
+  };
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingProfile(true);
     const updates: Partial<UserProfile> = {};
-    if (height) updates.height = parseFloat(height);
     if (nickname) updates.nickname = nickname;
     if (slogan) updates.slogan = slogan;
     if (targetDate) updates.targetDate = targetDate;
     if (targetEvent) updates.targetEvent = targetEvent;
+    if (targetWeight) updates.targetWeight = parseFloat(targetWeight);
 
     await updateProfile(updates);
     setSavingProfile(false);
+    setShowAccountModal(false);
+  };
+
+  const handleShare = async (title: string, text: string) => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title,
+          text,
+        });
+      } catch (err) {
+        console.error("Lỗi chia sẻ:", err);
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(`${title}\n${text}`);
+        alert("Đã sao chép vào bộ nhớ tạm!");
+      } catch (err) {
+        console.error("Không thể sao chép:", err);
+      }
+    }
   };
 
   const sortedMetrics = useMemo(
     () => [...metrics].sort((a, b) => a.date.localeCompare(b.date)),
     [metrics],
   );
-  const latestMetric = sortedMetrics[sortedMetrics.length - 1];
-
   const parsedMetrics = useMemo(() => {
-    return sortedMetrics.map((m) => ({
-      ...m,
-      timestampForChart: new Date(m.date).getTime(),
-    }));
-  }, [sortedMetrics]);
+    return sortedMetrics.map((m) => {
+      let calcBmi = m.bmi;
+      const calcHeight = m.height || profile?.height;
+      if (!calcBmi && calcHeight && m.weight) {
+        const heightInMeters = calcHeight / 100;
+        calcBmi = parseFloat(
+          (m.weight / (heightInMeters * heightInMeters)).toFixed(1),
+        );
+      }
+      return {
+        ...m,
+        bmi: calcBmi,
+        timestampForChart: new Date(m.date).getTime(),
+      };
+    });
+  }, [sortedMetrics, profile?.height]);
+
+  const latestMetric = parsedMetrics[parsedMetrics.length - 1];
 
   const chartDomainX = useMemo(() => {
-    if (parsedMetrics.length === 0) return ["auto", "auto"];
-    const minT = parsedMetrics[0].timestampForChart;
-    const actualMax = parsedMetrics[parsedMetrics.length - 1].timestampForChart;
-    const minExpectedMax = minT + 365 * 24 * 60 * 60 * 1000; // +1 year in milliseconds
-    return [minT, Math.max(actualMax, minExpectedMax)];
-  }, [parsedMetrics]);
+    const now = Date.now();
+    const sixMonths = 6 * 30 * 24 * 60 * 60 * 1000;
+    return [now - sixMonths, now + sixMonths];
+  }, []);
 
   let whtr = null;
-  if (latestMetric?.waist && profile?.height) {
-    whtr = latestMetric.waist / profile.height;
+  const currentHeight = latestMetric?.height || profile?.height;
+  if (latestMetric?.waist && currentHeight) {
+    whtr = latestMetric.waist / currentHeight;
   }
 
   const hasMetabolicRisk = whtr !== null && whtr > 0.5;
@@ -396,42 +489,79 @@ function Dashboard({
     profile?.nickname ||
     (isGuest ? "Khách" : user?.displayName?.split(" ")[0] || "Bạn");
 
-  const bentoCard =
-    "bg-white p-4 rounded-3xl shadow-sm border border-slate-100 transition-all hover:shadow-md";
+  const yAxisConfig = useMemo(() => {
+    if (chartType === "weight") {
+      const maxWeight = Math.max(...parsedMetrics.map(m => m.weight), 0);
+      if (maxWeight > 70) {
+        // Start at 50, jump by 5
+        const maxTick = Math.ceil(maxWeight / 5) * 5 + 10; 
+        const ticks = [];
+        for (let i = 50; i <= maxTick; i += 5) ticks.push(i);
+        return { domain: [50, "auto"], ticks };
+      }
+      return {
+        domain: [0, "auto"],
+        ticks: [0, 10, 20, 30, 40, 50, 60, 70, 80]
+      };
+    }
+    if (chartType === "bmi") {
+      return {
+        domain: [20, 40],
+        ticks: undefined
+      };
+    }
+    if (chartType === "waist") {
+      return {
+        domain: [60, 150],
+        ticks: undefined
+      };
+    }
+    return { domain: ["auto", "auto"], ticks: undefined };
+  }, [chartType, parsedMetrics]);
 
-  const getCalculatedDomain = (domain: [number, number]) => {
-    const [dataMin, dataMax] = domain;
-    if (!isFinite(dataMin) || !isFinite(dataMax)) return [0, "auto"];
-    const diff = dataMax - dataMin;
-    const padding = diff === 0 ? 5 : diff * 0.2;
-    const min = Math.floor(dataMin - padding);
-    return [Math.max(0, min), "auto"];
-  };
+  const bentoCard =
+    "bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 transition-all hover:shadow-md";
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20 font-sans text-slate-800 selection:bg-indigo-200">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-20 font-sans text-slate-800 dark:text-slate-100 selection:bg-indigo-200">
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-indigo-50/50">
+      <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-50 border-b border-indigo-50/50 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
-              <Apple className="w-5 h-5 text-indigo-500" />
+            <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/50 rounded-xl flex items-center justify-center">
+              <Apple className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
             </div>
             <div className="flex items-baseline gap-1.5">
-              <h1 className="font-bold text-xl sm:text-2xl text-slate-900 tracking-tight leading-tight">
+              <h1 className="font-bold text-xl sm:text-2xl text-slate-900 dark:text-white tracking-tight leading-tight">
                 OnlyTrack
               </h1>
-              <span className="text-xs sm:text-sm font-semibold text-indigo-500 uppercase tracking-widest">
+              <span className="text-xs sm:text-sm font-semibold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">
                 by Dr.Son
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            {profile?.nickname && (
-              <span className="text-sm font-medium text-slate-600 hidden sm:block bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-                Hi, {profile.nickname} 👋
+          <div className="flex items-center gap-2 sm:gap-4">
+            <button
+              onClick={() => setShowStats(!showStats)}
+              className="w-10 h-10 rounded-full flex items-center justify-center bg-slate-100 text-slate-500 hover:bg-indigo-100 hover:text-indigo-600 transition-colors"
+              title={showStats ? "Ẩn chỉ số" : "Hiện chỉ số"}
+            >
+              {showStats ? (
+                <EyeOff className="w-5 h-5" />
+              ) : (
+                <Eye className="w-5 h-5" />
+              )}
+            </button>
+            <button
+              onClick={() => setShowAccountModal(true)}
+              className="flex items-center gap-2 group bg-slate-100 hover:bg-slate-200 px-3 sm:px-4 py-2 rounded-full border border-slate-200 transition-colors"
+              title="Quản lí tài khoản"
+            >
+              <UserCircle className="w-5 h-5 text-slate-500 group-hover:text-indigo-600 transition-colors" />
+              <span className="text-sm font-bold text-slate-600 group-hover:text-slate-900 hidden sm:block">
+                {profile?.nickname ? profile.nickname : "Tài khoản"}
               </span>
-            )}
+            </button>
             <button
               onClick={onLogout}
               className="w-10 h-10 rounded-full flex items-center justify-center bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900 transition-colors"
@@ -469,28 +599,188 @@ function Dashboard({
           />
         )}
 
-        {/* Bento Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Mobile Metrics Box */}
+        <div className="md:hidden bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-teal-700">
+              <div className="p-1.5 bg-teal-100 rounded-lg">
+                <Scale className="w-4 h-4" />
+              </div>
+              <span className="font-bold text-sm">Cân nặng</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-baseline gap-1">
+                <span className="text-xl font-black text-teal-900">
+                  {!latestMetric?.weight
+                    ? "--"
+                    : showStats
+                      ? latestMetric.weight
+                      : "**"}
+                </span>
+                <span className="text-teal-700 font-bold text-xs">kg</span>
+              </div>
+              {latestMetric?.weight && showStats && (
+                <button
+                  onClick={() => handleShare("Cân nặng của tôi", `Tôi đang nặng ${latestMetric.weight} kg!`)}
+                  className="p-1.5 text-slate-400 hover:text-teal-600 bg-slate-50 hover:bg-teal-50 rounded-lg transition-colors"
+                  title="Chia sẻ cân nặng"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-blue-700">
+              <div className="p-1.5 bg-blue-100 rounded-lg">
+                <Activity className="w-4 h-4" />
+              </div>
+              <span className="font-bold text-sm">Chỉ số BMI</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-baseline">
+                <span className="text-xl font-black text-blue-900">
+                  {!latestMetric?.bmi
+                    ? "--"
+                    : showStats
+                      ? latestMetric.bmi
+                      : "**"}
+                </span>
+              </div>
+              {latestMetric?.bmi && showStats && (
+                <button
+                  onClick={() => handleShare("Chỉ số BMI", `Chỉ số BMI của tôi hiện tại là ${latestMetric.bmi}`)}
+                  className="p-1.5 text-slate-400 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Chia sẻ BMI"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-amber-700">
+              <div className="p-1.5 bg-amber-100 rounded-lg">
+                <Ruler className="w-4 h-4" />
+              </div>
+              <span className="font-bold text-sm">Vòng eo</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-baseline gap-1">
+                <span className="text-xl font-black text-amber-900">
+                  {!latestMetric?.waist
+                    ? "--"
+                    : showStats
+                      ? latestMetric.waist
+                      : "**"}
+                </span>
+                <span className="text-amber-700 font-bold text-xs">cm</span>
+              </div>
+              {latestMetric?.waist && showStats && (
+                <button
+                  onClick={() => handleShare("Vòng eo", `Vòng eo của tôi hiện tại là ${latestMetric.waist} cm!`)}
+                  className="p-1.5 text-slate-400 hover:text-amber-600 bg-slate-50 hover:bg-amber-50 rounded-lg transition-colors"
+                  title="Chia sẻ vòng eo"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div
+              className={cn(
+                "flex items-center gap-2",
+                hasMetabolicRisk ? "text-rose-700" : "text-emerald-700",
+              )}
+            >
+              <div
+                className={cn(
+                  "p-1.5 rounded-lg",
+                  hasMetabolicRisk ? "bg-rose-100" : "bg-emerald-100",
+                )}
+              >
+                {hasMetabolicRisk ? (
+                  <Flame className="w-4 h-4" />
+                ) : (
+                  <Target className="w-4 h-4" />
+                )}
+              </div>
+              <span className="font-bold text-sm">Tỷ lệ WHtR</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-baseline">
+                {whtr === null ? (
+                  <span className="text-slate-400 text-xs font-medium">
+                    Thiếu dữ liệu
+                  </span>
+                ) : (
+                  <span
+                    className={cn(
+                      "text-xl font-black",
+                      hasMetabolicRisk ? "text-rose-900" : "text-emerald-900",
+                    )}
+                  >
+                    {!whtr ? "--" : showStats ? whtr.toFixed(2) : "**"}
+                  </span>
+                )}
+              </div>
+              {whtr !== null && showStats && whtr > 0 && (
+                <button
+                  onClick={() => handleShare("Tỷ lệ WHtR", `Tỷ lệ WHtR của tôi đang là ${whtr.toFixed(2)}`)}
+                  className={cn(
+                    "p-1.5 rounded-lg transition-colors bg-slate-50",
+                    hasMetabolicRisk 
+                      ? "text-rose-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      : "text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer"
+                  )}
+                  title="Chia sẻ tỷ lệ WHtR"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop Bento Grid */}
+        <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Main Stat: Weight */}
           <div
             className={cn(
               bentoCard,
-              "md:col-span-2 lg:col-span-1 bg-gradient-to-br from-emerald-50 to-teal-50 border-teal-100 flex flex-col justify-between",
+              "md:col-span-2 lg:col-span-1 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border-teal-100 dark:border-teal-900/50 flex flex-col justify-between",
             )}
           >
             <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3 text-teal-700">
-                <div className="p-2.5 bg-teal-100 rounded-xl">
+              <div className="flex items-center gap-3 text-teal-700 dark:text-teal-400">
+                <div className="p-2.5 bg-teal-100 dark:bg-teal-900/50 rounded-xl">
                   <Scale className="w-5 h-5" />
                 </div>
                 <h3 className="font-bold">Cân nặng</h3>
               </div>
+              {latestMetric?.weight && showStats && (
+                <button
+                  onClick={() => handleShare("Cân nặng của tôi", `Tôi đang nặng ${latestMetric.weight} kg!`)}
+                  className="p-2 text-teal-600/50 hover:text-teal-700 hover:bg-teal-100 dark:text-teal-400/50 dark:hover:text-teal-300 dark:hover:bg-teal-900/50 rounded-xl transition-colors"
+                  title="Chia sẻ cân nặng"
+                >
+                  <Share2 className="w-5 h-5" />
+                </button>
+              )}
             </div>
             <div className="flex items-baseline gap-2 mt-auto">
-              <span className="text-5xl font-black text-teal-900 tracking-tighter">
-                {latestMetric?.weight || "--"}
+              <span className="text-5xl font-black text-teal-900 dark:text-teal-100 tracking-tighter">
+                {!latestMetric?.weight
+                  ? "--"
+                  : showStats
+                    ? latestMetric.weight
+                    : "**"}
               </span>
-              <span className="text-teal-700 font-bold">kg</span>
+              <span className="text-teal-700 dark:text-teal-400 font-bold">kg</span>
             </div>
           </div>
 
@@ -498,18 +788,33 @@ function Dashboard({
           <div
             className={cn(
               bentoCard,
-              "bg-gradient-to-br from-blue-50 to-sky-50 border-blue-100 flex flex-col justify-between",
+              "bg-gradient-to-br from-blue-50 to-sky-50 dark:from-blue-900/20 dark:to-sky-900/20 border-blue-100 dark:border-blue-900/50 flex flex-col justify-between",
             )}
           >
-            <div className="flex items-center gap-3 text-blue-700 mb-6">
-              <div className="p-2.5 bg-blue-100 rounded-xl">
-                <Activity className="w-5 h-5" />
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3 text-blue-700 dark:text-blue-400">
+                <div className="p-2.5 bg-blue-100 dark:bg-blue-900/50 rounded-xl">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold">Chỉ số BMI</h3>
               </div>
-              <h3 className="font-bold">Chỉ số BMI</h3>
+              {latestMetric?.bmi && showStats && (
+                <button
+                  onClick={() => handleShare("Chỉ số BMI", `Chỉ số BMI của tôi hiện tại là ${latestMetric.bmi}`)}
+                  className="p-2 text-blue-600/50 hover:text-blue-700 hover:bg-blue-100 dark:text-blue-400/50 dark:hover:text-blue-300 dark:hover:bg-blue-900/50 rounded-xl transition-colors"
+                  title="Chia sẻ BMI"
+                >
+                  <Share2 className="w-5 h-5" />
+                </button>
+              )}
             </div>
             <div className="flex items-baseline mt-auto">
-              <span className="text-5xl font-black text-blue-900 tracking-tighter">
-                {latestMetric?.bmi || "--"}
+              <span className="text-5xl font-black text-blue-900 dark:text-blue-100 tracking-tighter">
+                {!latestMetric?.bmi
+                  ? "--"
+                  : showStats
+                    ? latestMetric.bmi
+                    : "**"}
               </span>
             </div>
           </div>
@@ -518,20 +823,35 @@ function Dashboard({
           <div
             className={cn(
               bentoCard,
-              "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-100 flex flex-col justify-between",
+              "bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-100 dark:border-amber-900/50 flex flex-col justify-between",
             )}
           >
-            <div className="flex items-center gap-3 text-amber-700 mb-6">
-              <div className="p-2.5 bg-amber-100 rounded-xl">
-                <Ruler className="w-5 h-5" />
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3 text-amber-700 dark:text-amber-400">
+                <div className="p-2.5 bg-amber-100 dark:bg-amber-900/50 rounded-xl">
+                  <Ruler className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold">Vòng eo</h3>
               </div>
-              <h3 className="font-bold">Vòng eo</h3>
+              {latestMetric?.waist && showStats && (
+                <button
+                  onClick={() => handleShare("Vòng eo", `Vòng eo của tôi hiện tại là ${latestMetric.waist} cm!`)}
+                  className="p-2 text-amber-600/50 hover:text-amber-700 hover:bg-amber-100 dark:text-amber-400/50 dark:hover:text-amber-300 dark:hover:bg-amber-900/50 rounded-xl transition-colors"
+                  title="Chia sẻ vòng eo"
+                >
+                  <Share2 className="w-5 h-5" />
+                </button>
+              )}
             </div>
             <div className="flex items-baseline gap-2 mt-auto">
-              <span className="text-5xl font-black text-amber-900 tracking-tighter">
-                {latestMetric?.waist || "--"}
+              <span className="text-5xl font-black text-amber-900 dark:text-amber-100 tracking-tighter">
+                {!latestMetric?.waist
+                  ? "--"
+                  : showStats
+                    ? latestMetric.waist
+                    : "**"}
               </span>
-              <span className="text-amber-700 font-bold">cm</span>
+              <span className="text-amber-700 dark:text-amber-400 font-bold">cm</span>
             </div>
           </div>
 
@@ -541,46 +861,69 @@ function Dashboard({
               bentoCard,
               "md:col-span-2 lg:col-span-1 flex flex-col justify-between relative overflow-hidden border-2",
               hasMetabolicRisk
-                ? "bg-rose-50 border-rose-200"
-                : "bg-emerald-50 border-emerald-200",
+                ? "bg-rose-50 dark:bg-rose-900/10 border-rose-200 dark:border-rose-900/30"
+                : "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/30",
             )}
           >
-            <div
-              className={cn(
-                "flex items-center gap-3 mb-4",
-                hasMetabolicRisk ? "text-rose-700" : "text-emerald-700",
-              )}
-            >
+            <div className="flex items-start justify-between mb-4">
               <div
                 className={cn(
-                  "p-2.5 rounded-xl",
-                  hasMetabolicRisk ? "bg-rose-100" : "bg-emerald-100",
+                  "flex items-center gap-3",
+                  hasMetabolicRisk ? "text-rose-700 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400",
                 )}
               >
-                {hasMetabolicRisk ? (
-                  <Flame className="w-5 h-5" />
-                ) : (
-                  <Target className="w-5 h-5" />
-                )}
+                <div
+                  className={cn(
+                    "p-2.5 rounded-xl",
+                    hasMetabolicRisk ? "bg-rose-100 dark:bg-rose-900/50" : "bg-emerald-100 dark:bg-emerald-900/50",
+                  )}
+                >
+                  {hasMetabolicRisk ? (
+                    <Flame className="w-5 h-5" />
+                  ) : (
+                    <Target className="w-5 h-5" />
+                  )}
+                </div>
+                <h3 className="font-bold flex items-center gap-1.5">
+                  Tỷ lệ WHtR
+                  {hasMetabolicRisk && (
+                    <span title="Nguy cơ chuyển hóa cao" className="cursor-help">
+                      <AlertTriangle className="w-4 h-4 text-rose-500 dark:text-rose-400" />
+                    </span>
+                  )}
+                </h3>
               </div>
-              <h3 className="font-bold">Tỷ lệ WHtR</h3>
+              {whtr !== null && showStats && whtr > 0 && (
+                <button
+                  onClick={() => handleShare("Tỷ lệ WHtR", `Tỷ lệ WHtR của tôi đang là ${whtr.toFixed(2)}`)}
+                  className={cn(
+                    "p-2 rounded-xl transition-colors",
+                    hasMetabolicRisk 
+                      ? "text-rose-600/50 hover:text-rose-700 hover:bg-rose-100 dark:text-rose-400/50 dark:hover:text-rose-300 dark:hover:bg-rose-900/50"
+                      : "text-emerald-600/50 hover:text-emerald-700 hover:bg-emerald-100 dark:text-emerald-400/50 dark:hover:text-emerald-300 dark:hover:bg-emerald-900/50"
+                  )}
+                  title="Chia sẻ tỷ lệ WHtR"
+                >
+                  <Share2 className="w-5 h-5" />
+                </button>
+              )}
             </div>
             <div className="mt-auto">
               {whtr === null ? (
-                <p className="text-slate-500 font-medium">
+                <p className="text-slate-500 dark:text-slate-400 font-medium">
                   Cần nhập{" "}
-                  <span className="font-bold text-slate-700">Chiều cao</span> &{" "}
-                  <span className="font-bold text-slate-700">Vòng eo</span>.
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Chiều cao</span> &{" "}
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Vòng eo</span>.
                 </p>
               ) : (
-                <div className="flex items-baseline gap-2 mb-3">
+                <div className="flex items-baseline gap-2 mt-auto">
                   <span
                     className={cn(
                       "text-5xl font-black tracking-tighter",
-                      hasMetabolicRisk ? "text-rose-900" : "text-emerald-900",
+                      hasMetabolicRisk ? "text-rose-900 dark:text-rose-400" : "text-emerald-900 dark:text-emerald-400",
                     )}
                   >
-                    {whtr.toFixed(2)}
+                    {!whtr ? "--" : showStats ? whtr.toFixed(2) : "**"}
                   </span>
                 </div>
               )}
@@ -592,16 +935,16 @@ function Dashboard({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-5 space-y-6">
             {/* Input Metric */}
-            <div className={cn(bentoCard, "border-2 border-indigo-50")}>
-              <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-3">
-                <div className="p-2.5 bg-indigo-100 text-indigo-600 rounded-xl">
+            <div className={cn(bentoCard, "border-2 border-indigo-50 dark:border-indigo-900/30")}>
+              <h2 className="text-xl font-black text-slate-900 dark:text-white mb-6 flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
                   <Plus className="w-5 h-5" />
                 </div>
                 Cập nhật chỉ số mới
               </h2>
               <form onSubmit={handleSaveMetric} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
                     Ngày cập nhật
                   </label>
                   <div className="relative">
@@ -611,14 +954,17 @@ function Dashboard({
                       required
                       value={date}
                       onChange={(e) => setDate(e.target.value)}
-                      className="w-full pl-10 pr-3 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 outline-none transition-all font-bold text-slate-700"
+                      className="w-full pl-10 pr-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 dark:text-slate-100"
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">
-                      Cân nặng (kg)
+                    <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
+                      Cân nặng
+                      <span className="text-slate-400 dark:text-slate-500 font-medium ml-1 block sm:inline">
+                        (kg)
+                      </span>
                     </label>
                     <input
                       type="number"
@@ -626,90 +972,29 @@ function Dashboard({
                       required
                       value={weight}
                       onChange={(e) => setWeight(e.target.value)}
-                      className="w-full px-3 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 outline-none transition-all font-bold text-lg text-slate-800"
+                      className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">
-                      Vòng eo{" "}
-                      <span className="text-slate-400 font-medium">(cm)</span>
+                    <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
+                      Vòng eo
+                      <span className="text-slate-400 dark:text-slate-500 font-medium ml-1 block sm:inline">
+                        (cm)
+                      </span>
                     </label>
                     <input
                       type="number"
                       step="0.1"
                       value={waist}
                       onChange={(e) => setWaist(e.target.value)}
-                      className="w-full px-3 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 outline-none transition-all font-bold text-lg text-slate-800"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">
-                    Ghi chú{" "}
-                    <span className="text-slate-400 font-medium">
-                      (tuỳ chọn)
-                    </span>
-                  </label>
-                  <input
-                    type="text"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    className="w-full px-3 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 outline-none transition-all font-bold text-slate-700"
-                    maxLength={500}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={savingMetric || !weight}
-                  className="w-full py-3 mt-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl font-bold transition-all shadow-md hover:shadow-xl hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0 disabled:shadow-none disabled:transform-none"
-                >
-                  {savingMetric ? "Đang lưu..." : "Lưu chỉ số 🚀"}
-                </button>
-              </form>
-            </div>
-
-            {/* Profile Settings */}
-            <div
-              className={cn(
-                bentoCard,
-                "border-2 border-purple-50 flex flex-col",
-              )}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-black text-slate-900 flex items-center gap-3">
-                  <div className="p-2.5 bg-purple-100 text-purple-600 rounded-xl">
-                    <UserCircle className="w-5 h-5" />
-                  </div>
-                  Thông tin cá nhân
-                </h2>
-                {isProfileComplete && (
-                  <button
-                    onClick={() => setShowProfile(!showProfile)}
-                    className="text-sm font-bold text-purple-600 hover:text-purple-800 bg-purple-50 px-3 py-1.5 rounded-lg"
-                  >
-                    {showProfile ? "Thu gọn" : "Hiển thị"}
-                  </button>
-                )}
-              </div>
-
-              {(showProfile || !isProfileComplete) && (
-                <form onSubmit={handleSaveProfile} className="space-y-4 mt-4">
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">
-                      Biệt danh
-                    </label>
-                    <input
-                      type="text"
-                      value={nickname}
-                      onChange={(e) => setNickname(e.target.value)}
-                      className="w-full px-3 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700"
+                      className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">
-                      Chiều cao (cm){" "}
-                      <span className="text-amber-500 font-medium ml-1">
-                        (dùng trong tính BMI)
+                    <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
+                      Chiều cao
+                      <span className="text-slate-400 dark:text-slate-500 font-medium ml-1 block sm:inline">
+                        (cm)
                       </span>
                     </label>
                     <input
@@ -717,51 +1002,33 @@ function Dashboard({
                       step="0.1"
                       value={height}
                       onChange={(e) => setHeight(e.target.value)}
-                      className="w-full px-3 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700"
+                      className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">
-                      Slogan quyết tâm ✨
-                    </label>
-                    <textarea
-                      value={slogan}
-                      onChange={(e) => setSlogan(e.target.value)}
-                      rows={2}
-                      className="w-full px-3 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700 resize-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">
-                      Ngày mục tiêu
-                    </label>
-                    <input
-                      type="date"
-                      value={targetDate}
-                      onChange={(e) => setTargetDate(e.target.value)}
-                      className="w-full px-3 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">
-                      Sự kiện mục tiêu
-                    </label>
-                    <input
-                      type="text"
-                      value={targetEvent}
-                      onChange={(e) => setTargetEvent(e.target.value)}
-                      className="w-full px-3 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={savingProfile}
-                    className="w-full py-3 text-purple-700 bg-purple-50 hover:bg-purple-600 hover:text-white border-2 border-purple-100 hover:border-purple-600 rounded-xl font-bold transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0 disabled:opacity-50 disabled:transform-none"
-                  >
-                    {savingProfile ? "Đang cập nhật..." : "Cập nhật hồ sơ ✨"}
-                  </button>
-                </form>
-              )}
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
+                    Ghi chú{" "}
+                    <span className="text-slate-400 dark:text-slate-500 font-medium">
+                      (tuỳ chọn)
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 dark:text-slate-100"
+                    maxLength={500}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={savingMetric || !weight}
+                  className="w-full py-3 mt-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:dark:bg-slate-800 disabled:text-slate-400 disabled:dark:text-slate-500 text-white rounded-xl font-bold transition-all shadow-md hover:shadow-xl hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0 disabled:shadow-none disabled:transform-none"
+                >
+                  {savingMetric ? "Đang lưu..." : "Lưu chỉ số 🚀"}
+                </button>
+              </form>
             </div>
           </div>
 
@@ -770,25 +1037,25 @@ function Dashboard({
             <div
               className={cn(
                 bentoCard,
-                "flex flex-col h-[520px] border-2 border-slate-100",
+                "flex flex-col h-[520px] border-2 border-slate-100 dark:border-slate-800",
               )}
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
-                <h2 className="text-xl font-black text-slate-900 flex items-center gap-3">
-                  <div className="p-2.5 bg-indigo-100 text-indigo-600 rounded-xl">
+                <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3">
+                  <div className="p-2.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
                     <Activity className="w-5 h-5" />
                   </div>
                   Biểu đồ tiến độ
                 </h2>
 
-                <div className="inline-flex rounded-xl p-1.5 bg-slate-100 border border-slate-200 shadow-inner">
+                <div className="inline-flex rounded-xl p-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner">
                   <button
                     onClick={() => setChartType("weight")}
                     className={cn(
                       "px-4 py-2 text-sm font-bold rounded-lg transition-all",
                       chartType === "weight"
-                        ? "bg-white shadow-sm text-indigo-600"
-                        : "text-slate-500 hover:text-slate-900",
+                        ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200",
                     )}
                   >
                     Cân nặng
@@ -798,8 +1065,8 @@ function Dashboard({
                     className={cn(
                       "px-4 py-2 text-sm font-bold rounded-lg transition-all",
                       chartType === "bmi"
-                        ? "bg-white shadow-sm text-indigo-600"
-                        : "text-slate-500 hover:text-slate-900",
+                        ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200",
                     )}
                   >
                     BMI
@@ -809,8 +1076,8 @@ function Dashboard({
                     className={cn(
                       "px-4 py-2 text-sm font-bold rounded-lg transition-all",
                       chartType === "waist"
-                        ? "bg-white shadow-sm text-indigo-600"
-                        : "text-slate-500 hover:text-slate-900",
+                        ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200",
                     )}
                   >
                     Vòng eo
@@ -819,11 +1086,11 @@ function Dashboard({
               </div>
 
               {sortedMetrics.length > 0 ? (
-                <div className="flex-grow w-full min-h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="w-full mt-4">
+                  <ResponsiveContainer width="100%" height={300}>
                     <LineChart
                       data={parsedMetrics}
-                      margin={{ top: 10, right: 20, bottom: 0, left: -20 }}
+                      margin={{ top: 10, right: 30, bottom: 20, left: 10 }}
                     >
                       <CartesianGrid
                         strokeDasharray="4 4"
@@ -845,6 +1112,7 @@ function Dashboard({
                         dy={15}
                         padding={{ left: 20, right: 20 }}
                         tickFormatter={(val) => {
+                          if (!val) return "";
                           const d = new Date(val);
                           return d.toLocaleDateString("vi-VN", {
                             month: "2-digit",
@@ -853,7 +1121,8 @@ function Dashboard({
                         }}
                       />
                       <YAxis
-                        domain={["auto", "auto"]}
+                        domain={yAxisConfig.domain as any}
+                        ticks={yAxisConfig.ticks}
                         axisLine={false}
                         tickLine={false}
                         tick={{
@@ -862,15 +1131,15 @@ function Dashboard({
                           fontWeight: 600,
                         }}
                         dx={-8}
-                        width={40}
+                        width={60}
                       />
                       <Tooltip
                         content={({ active, payload, label }) => {
                           if (active && payload && payload.length) {
                             const data = payload[0].payload;
                             return (
-                              <div className="bg-white p-4 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100">
-                                <p className="text-slate-500 font-bold mb-2 text-sm">
+                              <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 dark:border-slate-700">
+                                <p className="text-slate-500 dark:text-slate-400 font-bold mb-2 text-sm">
                                   {new Date(data.date).toLocaleDateString(
                                     "vi-VN",
                                   )}
@@ -882,7 +1151,7 @@ function Dashboard({
                                       backgroundColor: payload[0].color,
                                     }}
                                   ></span>
-                                  <p className="text-slate-800 font-black text-lg">
+                                  <p className="text-slate-800 dark:text-slate-100 font-black text-lg">
                                     {username}:{" "}
                                     <span style={{ color: payload[0].color }}>
                                       {payload[0].value}
@@ -895,7 +1164,7 @@ function Dashboard({
                                   </p>
                                 </div>
                                 {data.note && (
-                                  <p className="text-slate-500 text-xs mt-2 italic max-w-[200px]">
+                                  <p className="text-slate-500 dark:text-slate-400 text-xs mt-2 italic max-w-[200px]">
                                     "{data.note}"
                                   </p>
                                 )}
@@ -905,6 +1174,24 @@ function Dashboard({
                           return null;
                         }}
                       />
+                      {showStats &&
+                        profile?.targetWeight &&
+                        chartType === "weight" && (
+                          <ReferenceLine
+                            y={profile.targetWeight}
+                            stroke="#ef4444"
+                            strokeDasharray="5 5"
+                            strokeWidth={2}
+                            strokeOpacity={0.6}
+                            label={{
+                              position: "insideTopLeft",
+                              value: "Mục tiêu",
+                              fill: "#ef4444",
+                              fontSize: 12,
+                              fontWeight: "bold",
+                            }}
+                          />
+                        )}
                       {chartType === "weight" && (
                         <Line
                           type="monotone"
@@ -1018,24 +1305,27 @@ function Dashboard({
             <div
               className={cn(
                 bentoCard,
-                "p-0 overflow-hidden border-2 border-slate-100",
+                "p-0 overflow-hidden border-2 border-slate-100 dark:border-slate-800",
               )}
             >
-              <div className="px-6 sm:px-8 py-5 border-b border-slate-100 flex items-center gap-3 bg-slate-50/80">
-                <div className="p-2.5 bg-slate-200 text-slate-600 rounded-xl">
+              <div className="px-6 sm:px-8 py-5 border-b border-slate-100 dark:border-slate-700/50 flex items-center gap-3 bg-slate-50/80 dark:bg-slate-800/80">
+                <div className="p-2.5 bg-slate-200 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 rounded-xl">
                   <Bell className="w-5 h-5" />
                 </div>
-                <h2 className="text-xl font-black text-slate-900">
+                <h2 className="text-xl font-black text-slate-900 dark:text-white">
                   Các lần nhập thông tin
                 </h2>
               </div>
               {sortedMetrics.length > 0 ? (
                 <div className="max-h-[350px] overflow-y-auto">
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-white text-slate-400 sticky top-0 z-10 shadow-[0_1px_2px_0_rgba(0,0,0,0.02)]">
+                    <thead className="bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 sticky top-0 z-10 shadow-[0_1px_2px_0_rgba(0,0,0,0.02)]">
                       <tr>
                         <th className="px-6 py-4 font-bold">Ngày</th>
                         <th className="px-6 py-4 font-bold">Cân nặng</th>
+                        <th className="px-6 py-4 font-bold hidden sm:table-cell">
+                          Chiều cao
+                        </th>
                         <th className="px-6 py-4 font-bold hidden sm:table-cell">
                           BMI
                         </th>
@@ -1047,44 +1337,50 @@ function Dashboard({
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
+                    <tbody className="divide-y divide-slate-50 dark:divide-slate-700/50">
                       {[...sortedMetrics].reverse().map((m) => (
                         <tr
                           key={m.id}
-                          className="hover:bg-slate-50/80 transition-colors group"
+                          className="hover:bg-slate-50/80 dark:hover:bg-slate-700/30 transition-colors group"
                         >
                           <td className="px-6 py-5">
-                            <div className="text-slate-900 font-bold">
+                            <div className="text-slate-900 dark:text-slate-200 font-bold">
                               {m.date}
                             </div>
                             {m.note && (
                               <div
-                                className="text-xs text-slate-500 mt-1 max-w-[120px] truncate"
+                                className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-[120px] truncate"
                                 title={m.note}
                               >
                                 {m.note}
                               </div>
                             )}
                           </td>
-                          <td className="px-6 py-5 font-black text-indigo-600 text-base">
+                          <td className="px-6 py-5 font-black text-indigo-600 dark:text-indigo-400 text-base">
                             {m.weight}{" "}
-                            <span className="font-bold text-slate-400 text-xs">
+                            <span className="font-bold text-slate-400 dark:text-slate-500 text-xs">
                               kg
                             </span>
                           </td>
-                          <td className="px-6 py-5 text-slate-500 font-bold hidden sm:table-cell">
+                          <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-bold hidden sm:table-cell">
+                            {m.height ? `${m.height}` : "-"}{" "}
+                            <span className="font-bold text-slate-400 dark:text-slate-500 text-xs">
+                              {m.height ? "cm" : ""}
+                            </span>
+                          </td>
+                          <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-bold hidden sm:table-cell">
                             {m.bmi || "-"}
                           </td>
-                          <td className="px-6 py-5 text-slate-500 font-bold hidden sm:table-cell">
+                          <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-bold hidden sm:table-cell">
                             {m.waist ? `${m.waist}` : "-"}{" "}
-                            <span className="font-bold text-slate-400 text-xs hidden sm:inline">
+                            <span className="font-bold text-slate-400 dark:text-slate-500 text-xs hidden sm:inline">
                               {m.waist ? "cm" : ""}
                             </span>
                           </td>
                           <td className="px-6 py-5 text-right">
                             <button
                               onClick={() => deleteMetric(m.id)}
-                              className="text-slate-300 hover:text-rose-500 transition-colors p-2.5 rounded-xl hover:bg-rose-50 sm:opacity-0 group-hover:opacity-100"
+                              className="text-slate-300 dark:text-slate-600 hover:text-rose-500 dark:hover:text-rose-400 transition-colors p-2.5 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-900/30 sm:opacity-0 group-hover:opacity-100"
                               title="Xoá dữ liệu này"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1108,8 +1404,150 @@ function Dashboard({
       <footer className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center border-t border-slate-200 mt-6">
         <p className="text-xs text-slate-400 font-medium max-w-2xl mx-auto leading-relaxed">
           Ứng dụng là sản phẩm hỗ trợ điều trị của BS. Đỗ Tiến Sơn
+          <br />
+          Khoa Nhi - Bệnh viện Đa khoa Tâm Anh
+          <br />
+          dotienson.com/apps
         </p>
       </footer>
+
+      {showAccountModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            onClick={() => setShowAccountModal(false)}
+          ></div>
+          <div className="relative bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between p-6 pb-4 border-b border-slate-100 dark:border-slate-700">
+              <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3">
+                <div className="p-2.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-xl">
+                  <UserCircle className="w-5 h-5" />
+                </div>
+                Quản lí tài khoản
+              </h2>
+              <button
+                onClick={() => setShowAccountModal(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="p-6">
+              <form onSubmit={handleSaveProfile} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
+                    Biệt danh
+                  </label>
+                  <input
+                    type="text"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700 dark:text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
+                    Slogan quyết tâm ✨
+                  </label>
+                  <textarea
+                    value={slogan}
+                    onChange={(e) => setSlogan(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700 dark:text-slate-100 resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
+                    Cân nặng mục tiêu (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={targetWeight}
+                    onChange={(e) => setTargetWeight(e.target.value)}
+                    className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700 dark:text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
+                    Ngày mục tiêu
+                  </label>
+                  <input
+                    type="date"
+                    value={targetDate}
+                    onChange={(e) => setTargetDate(e.target.value)}
+                    className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700 dark:text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
+                    Sự kiện mục tiêu
+                  </label>
+                  <input
+                    type="text"
+                    value={targetEvent}
+                    onChange={(e) => setTargetEvent(e.target.value)}
+                    className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700 dark:text-slate-100"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={savingProfile}
+                  className="w-full py-3 mt-4 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-600 dark:hover:bg-purple-600 hover:text-white border-2 border-purple-100 dark:border-purple-800 hover:border-purple-600 rounded-xl font-bold transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0 disabled:opacity-50 disabled:transform-none"
+                >
+                  {savingProfile ? "Đang cập nhật..." : "Cập nhật hồ sơ ✨"}
+                </button>
+                <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-700 flex flex-col gap-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={handleExportData}
+                      className="w-full py-3 flex items-center justify-center gap-2 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-500 hover:text-white cursor-pointer border-2 border-indigo-50 dark:border-indigo-900/30 hover:border-indigo-500 rounded-xl font-bold transition-all text-sm"
+                    >
+                      <Download className="w-4 h-4" />
+                      Sao lưu
+                    </button>
+                    <div>
+                      <input
+                        type="file"
+                        accept=".json"
+                        ref={fileInputRef}
+                        onChange={handleImportData}
+                        className="hidden"
+                        id="import-backup-file"
+                      />
+                      <label
+                        htmlFor="import-backup-file"
+                        className="w-full py-3 flex items-center justify-center gap-2 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-500 hover:text-white cursor-pointer border-2 border-emerald-50 dark:border-emerald-900/30 hover:border-emerald-500 rounded-xl font-bold transition-all text-sm h-full"
+                      >
+                        <Upload className="w-4 h-4" />
+                        Khôi phục
+                      </label>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (
+                        window.confirm(
+                          "Thao tác này sẽ xoá toàn bộ dữ liệu hiện tại của thiết bị này. Bạn có chắc chắn muốn xoá?",
+                        )
+                      ) {
+                        await clearData();
+                        setShowAccountModal(false);
+                      }
+                    }}
+                    className="w-full py-3 flex items-center justify-center gap-2 text-red-600 bg-red-50 dark:bg-red-900/20 hover:bg-red-500 hover:text-white cursor-pointer border-2 border-red-50 dark:border-red-900/30 hover:border-red-500 rounded-xl font-bold transition-all"
+                  >
+                    <AlertTriangle className="w-4 h-4" />
+                    Xoá toàn bộ dữ liệu
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
