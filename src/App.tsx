@@ -321,6 +321,18 @@ function Dashboard({
     return () => clearInterval(intervalId);
   }, [profile?.reminderTime]);
 
+  const handleDecimalInput = (setter: React.Dispatch<React.SetStateAction<string>>) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/,/g, ".").replace(/[^0-9.]/g, "");
+    const parts = val.split(".");
+    if (parts.length > 2) {
+      val = parts[0] + "." + parts.slice(1).join("");
+    }
+    if (parts.length === 2 && parts[1].length > 1) {
+      val = parts[0] + "." + parts[1].substring(0, 1);
+    }
+    setter(val);
+  };
+
   const handleSaveMetric = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!weight) return;
@@ -382,7 +394,9 @@ function Dashboard({
       try {
         const canvas = await html2canvas(chartRef.current, {
           backgroundColor: document.documentElement.classList.contains("dark") ? "#0f172a" : "#ffffff",
-          scale: 2
+          scale: 2,
+          useCORS: true,
+          logging: false
         });
         const url = canvas.toDataURL("image/png");
         const link = document.createElement("a");
@@ -1025,12 +1039,11 @@ function Dashboard({
                       </span>
                     </label>
                     <input
-                      type="number"
-                      step="0.1"
+                      type="text"
                       required
                       inputMode="decimal"
                       value={weight}
-                      onChange={(e) => setWeight(e.target.value)}
+                      onChange={handleDecimalInput(setWeight)}
                       className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
                     />
                   </div>
@@ -1042,11 +1055,10 @@ function Dashboard({
                       </span>
                     </label>
                     <input
-                      type="number"
-                      step="0.1"
+                      type="text"
                       inputMode="decimal"
                       value={waist}
-                      onChange={(e) => setWaist(e.target.value)}
+                      onChange={handleDecimalInput(setWaist)}
                       className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
                     />
                   </div>
@@ -1058,11 +1070,10 @@ function Dashboard({
                       </span>
                     </label>
                     <input
-                      type="number"
-                      step="0.1"
+                      type="text"
                       inputMode="decimal"
                       value={height}
-                      onChange={(e) => setHeight(e.target.value)}
+                      onChange={handleDecimalInput(setHeight)}
                       className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
                     />
                   </div>
@@ -1099,7 +1110,7 @@ function Dashboard({
               ref={chartRef}
               className={cn(
                 bentoCard,
-                "flex flex-col h-[520px] border-2 border-slate-100 dark:border-slate-800",
+                "flex flex-col min-h-[520px] border-2 border-slate-100 dark:border-slate-800",
               )}
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
@@ -1112,6 +1123,7 @@ function Dashboard({
                   </h2>
                   <button
                     onClick={handleScreenshotChart}
+                    data-html2canvas-ignore="true"
                     className="p-1.5 text-slate-400 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-900/50 rounded-lg transition-colors ml-2"
                     title="Chụp ảnh biểu đồ"
                   >
@@ -1180,15 +1192,19 @@ function Dashboard({
                           fontSize: 12,
                           fontWeight: 600,
                         }}
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
                         dy={15}
+                        dx={-5}
                         padding={{ left: 20, right: 20 }}
                         tickFormatter={(val) => {
                           if (!val) return "";
                           const d = new Date(val);
-                          return d.toLocaleDateString("vi-VN", {
-                            month: "2-digit",
-                            year: "2-digit",
-                          });
+                          const day = d.getDate().toString().padStart(2, "0");
+                          const month = (d.getMonth() + 1).toString().padStart(2, "0");
+                          const year = d.getFullYear().toString().slice(-2);
+                          return `${day}/${month}/${year}`;
                         }}
                       />
                       <YAxis
@@ -1359,18 +1375,20 @@ function Dashboard({
                     </LineChart>
                   </ResponsiveContainer>
                   {chartType === "weight" && sortedMetrics.length > 0 && (
-                    <div className="mt-4 flex flex-wrap items-center justify-center gap-4 sm:gap-8 text-sm sm:text-base bg-slate-50 dark:bg-slate-700/30 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
-                      <div className="flex flex-col items-center">
+                    <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 sm:flex sm:flex-wrap sm:justify-center text-sm sm:text-base">
+                      <div className="flex flex-col items-center justify-center w-full sm:w-32 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner">
                         <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Bắt đầu</span>
                         <span className="font-black text-slate-800 dark:text-slate-100">{sortedMetrics[0].weight} <span className="text-xs text-slate-500 font-bold font-sans">kg</span></span>
                       </div>
-                      <div className="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
-                      <div className="flex flex-col items-center">
+                      <div className="flex flex-col items-center justify-center w-full sm:w-32 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner">
+                        <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Đỉnh điểm</span>
+                        <span className="font-black text-slate-800 dark:text-slate-100">{Math.max(...sortedMetrics.map(m => m.weight))} <span className="text-xs text-slate-500 font-bold font-sans">kg</span></span>
+                      </div>
+                      <div className="flex flex-col items-center justify-center w-full sm:w-32 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner">
                         <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Hiện tại</span>
                         <span className="font-black text-slate-800 dark:text-slate-100">{sortedMetrics[sortedMetrics.length - 1].weight} <span className="text-xs text-slate-500 font-bold font-sans">kg</span></span>
                       </div>
-                      <div className="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
-                      <div className="flex flex-col items-center">
+                      <div className="flex flex-col items-center justify-center w-full sm:w-32 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner">
                         <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Đã giảm</span>
                         <span className={cn(
                           "font-black",
@@ -1545,11 +1563,10 @@ function Dashboard({
                       Cân mục tiêu (kg)
                     </label>
                     <input
-                      type="number"
-                      step="0.1"
+                      type="text"
                       inputMode="decimal"
                       value={targetWeight}
-                      onChange={(e) => setTargetWeight(e.target.value)}
+                      onChange={handleDecimalInput(setTargetWeight)}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
                     />
                   </div>
