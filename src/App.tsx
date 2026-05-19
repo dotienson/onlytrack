@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, signIn, signOut, testConnection } from "./firebase";
 import { useMetrics, Metric, UserProfile } from "./hooks/useMetrics";
+import html2canvas from "html2canvas";
 import {
   LineChart,
   Line,
@@ -36,6 +37,7 @@ import {
   Share2,
   Download,
   Upload,
+  Camera,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { clsx, type ClassValue } from "clsx";
@@ -355,6 +357,30 @@ function Dashboard({
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
+
+  const handleScreenshotChart = async () => {
+    if (chartRef.current) {
+      try {
+        const canvas = await html2canvas(chartRef.current, {
+          backgroundColor: document.documentElement.classList.contains("dark") ? "#0f172a" : "#ffffff",
+          scale: 2
+        });
+        const url = canvas.toDataURL("image/png");
+        const link = document.createElement("a");
+        link.href = url;
+        const now = new Date();
+        const backupDate = now.toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '');
+        const backupTime = now.toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/:/g, '');
+        link.download = `ProgressChart_${backupDate}_${backupTime}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (error) {
+        console.error("Lỗi khi chụp màn hình:", error);
+      }
+    }
+  };
 
   const handleExportData = () => {
     try {
@@ -1051,18 +1077,28 @@ function Dashboard({
           <div className="lg:col-span-7 space-y-6">
             {/* Chart Widget */}
             <div
+              ref={chartRef}
               className={cn(
                 bentoCard,
                 "flex flex-col h-[520px] border-2 border-slate-100 dark:border-slate-800",
               )}
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
-                <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3">
+                <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
                     <Activity className="w-5 h-5" />
                   </div>
-                  Biểu đồ tiến độ
-                </h2>
+                  <h2 className="text-xl font-black text-slate-900 dark:text-white">
+                    Biểu đồ tiến độ
+                  </h2>
+                  <button
+                    onClick={handleScreenshotChart}
+                    className="p-1.5 text-slate-400 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-900/50 rounded-lg transition-colors ml-2"
+                    title="Chụp ảnh biểu đồ"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                </div>
 
                 <div className="inline-flex rounded-xl p-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner">
                   <button
@@ -1432,7 +1468,7 @@ function Dashboard({
                 </div>
               ) : (
                 <div className="px-6 py-12 text-center text-slate-400 font-bold">
-                  Lịch sử trống. Ghi chỉ số đầu tiên ngay thôi! 😊
+                  Xin nhập các chỉ số đầu tiên!
                 </div>
               )}
             </div>
