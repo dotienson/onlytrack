@@ -33,6 +33,7 @@ export interface UserProfile {
   slogan?: string;
   targetDate?: string;
   targetEvent?: string;
+  reminderTime?: string;
   updatedAt: any;
 }
 

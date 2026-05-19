@@ -253,6 +253,7 @@ function Dashboard({
   const [slogan, setSlogan] = useState("");
   const [targetDate, setTargetDate] = useState("");
   const [targetEvent, setTargetEvent] = useState("");
+  const [reminderTime, setReminderTime] = useState("06:00");
 
   const [savingMetric, setSavingMetric] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -276,6 +277,7 @@ function Dashboard({
         setTargetEvent(profile.targetEvent);
       if (profile.targetWeight && targetWeight === "")
         setTargetWeight(profile.targetWeight.toString());
+      if (profile.reminderTime) setReminderTime(profile.reminderTime);
     }
   }, [profile]);
 
@@ -285,23 +287,39 @@ function Dashboard({
   }, [profile?.height]);
 
   useEffect(() => {
-    // Request notification permission and show reminder
-    if ("Notification" in window && Notification.permission !== "denied") {
-      Notification.requestPermission().then((permission) => {
-        if (permission === "granted") {
-          const lastNotif = localStorage.getItem("betteryou_last_notif");
-          const today = new Date().toISOString().split("T")[0];
-          if (lastNotif !== today) {
-            new Notification("OnlyTrack by Dr.Son", {
-              body: "Hôm nay bạn đã cập nhật chỉ số chưa? Hãy ghi lại tiến bộ nhé!",
-              icon: "/vite.svg",
-            });
-            localStorage.setItem("betteryou_last_notif", today);
-          }
+    if (!("Notification" in window)) return;
+
+    const checkReminder = () => {
+      if (Notification.permission !== "granted") {
+        if (Notification.permission !== "denied") {
+          Notification.requestPermission();
         }
-      });
-    }
-  }, []);
+        return; // wait for next tick or user to grant
+      }
+
+      const targetTime = profile?.reminderTime || "06:00";
+      const now = new Date();
+      const currentHours = now.getHours().toString().padStart(2, "0");
+      const currentMinutes = now.getMinutes().toString().padStart(2, "0");
+      const currentTime = `${currentHours}:${currentMinutes}`;
+
+      const lastNotif = localStorage.getItem("betteryou_last_notif");
+      const today = now.toISOString().split("T")[0];
+
+      if (currentTime >= targetTime && lastNotif !== today) {
+        new Notification("OnlyTrack by Dr.Son", {
+          body: "Chúc bạn một ngày đầy hứng khởi. Hãy bước lên cân vào cùng một thời điểm mỗi ngày nhé!",
+          icon: "/vite.svg",
+        });
+        localStorage.setItem("betteryou_last_notif", today);
+      }
+    };
+
+    checkReminder();
+    const intervalId = setInterval(checkReminder, 60000);
+
+    return () => clearInterval(intervalId);
+  }, [profile?.reminderTime]);
 
   const handleSaveMetric = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -461,6 +479,7 @@ function Dashboard({
     if (targetDate) updates.targetDate = targetDate;
     if (targetEvent) updates.targetEvent = targetEvent;
     if (targetWeight) updates.targetWeight = parseFloat(targetWeight);
+    if (reminderTime) updates.reminderTime = reminderTime;
 
     await updateProfile(updates);
     setSavingProfile(false);
@@ -1520,29 +1539,31 @@ function Dashboard({
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
                   />
                 </div>
-                <div className="w-1/2 sm:w-1/3">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
-                    Cân mục tiêu (kg)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    inputMode="decimal"
-                    value={targetWeight}
-                    onChange={(e) => setTargetWeight(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
-                  />
-                </div>
-                <div className="w-2/3 sm:w-1/2">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
-                    Ngày sự kiện
-                  </label>
-                  <input
-                    type="date"
-                    value={targetDate}
-                    onChange={(e) => setTargetDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
+                      Cân mục tiêu (kg)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      inputMode="decimal"
+                      value={targetWeight}
+                      onChange={(e) => setTargetWeight(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
+                      Ngày sự kiện
+                    </label>
+                    <input
+                      type="date"
+                      value={targetDate}
+                      onChange={(e) => setTargetDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
@@ -1552,6 +1573,22 @@ function Dashboard({
                     type="text"
                     value={targetEvent}
                     onChange={(e) => setTargetEvent(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
+                    Thời gian nhắc nhở (Mặc định: 06:00)
+                  </label>
+                  <input
+                    type="time"
+                    value={reminderTime}
+                    onChange={(e) => {
+                      setReminderTime(e.target.value);
+                      if ("Notification" in window && Notification.permission !== "granted") {
+                        Notification.requestPermission();
+                      }
+                    }}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
                   />
                 </div>
