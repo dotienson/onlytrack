@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User settings and profile like height",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "height": { "type": "number" },
+        "nickname": { "type": "string" },
+        "slogan": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "updatedAt"]
+    },
+    "Metric": {
+      "title": "Metric",
+      "description": "Weight, BMI, waist tracking entry",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "weight": { "type": "number" },
+        "waist": { "type": "number", "description": "Waist in cm" },
+        "bmi": { "type": "number", "description": "BMI value" },
+        "date": { "type": "string", "description": "Selected Date string YYYY-MM-DD" },
+        "timestamp": { "type": "string", "description": "Server timestamp" }
+      },
+      "required": ["userId", "weight", "date", "timestamp"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores user profile data"
+    },
+    "users/{userId}/metrics/{metricId}": {
+      "schema": { "$ref": "#/entities/Metric" },
+      "description": "Stores tracking metrics for a user"
+    }
+  }
+}

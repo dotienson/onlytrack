@@ -1,0 +1,6 @@
+{
+  "name": "BetterYou with Dr.Son",
+  "description": "Theo dõi và trực quan hoá cân nặng, BMI, vòng eo. Ghi nhớ theo thiết bị và account.",
+  "requestFramePermissions": ["notifications"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

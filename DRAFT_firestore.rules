@@ -1,0 +1,62 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() { return request.auth != null && request.auth.token.email_verified == true; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    
+    function isValidUserProfile(data) {
+      return data.keys().hasAny(['userId', 'updatedAt']) 
+        && data.keys().size() >= 2
+        && data.keys().size() <= 5
+        && data.userId == request.auth.uid
+        && data.updatedAt == request.time
+        && (!('height' in data) || (data.height is number))
+        && (!('nickname' in data) || (data.nickname is string && data.nickname.size() <= 100))
+        && (!('slogan' in data) || (data.slogan is string && data.slogan.size() <= 250));
+    }
+
+    function isValidMetric(data) {
+      return data.keys().hasAny(['userId', 'weight', 'date', 'timestamp'])
+        && data.keys().size() >= 4
+        && data.keys().size() <= 6
+        && data.userId == request.auth.uid
+        && data.weight is number
+        && data.date is string && data.date.size() <= 20
+        && data.timestamp == request.time
+        && (!('waist' in data) || (data.waist is number))
+        && (!('bmi' in data) || (data.bmi is number));
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(userId) && userId == request.auth.uid
+        && isValidUserProfile(incoming())
+        && incoming().keys().hasAll(['userId', 'updatedAt']);
+      allow update: if isSignedIn() && isValidId(userId) && userId == request.auth.uid
+        && isValidUserProfile(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['height', 'nickname', 'slogan', 'updatedAt'])
+        && incoming().userId == existing().userId;
+      
+      match /metrics/{metricId} {
+        allow get, list: if isSignedIn() && userId == request.auth.uid;
+        allow create: if isSignedIn() && isValidId(userId) && userId == request.auth.uid && isValidId(metricId)
+          && isValidMetric(incoming())
+          && incoming().keys().hasAll(['userId', 'weight', 'date', 'timestamp'])
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow update: if isSignedIn() && isValidId(userId) && userId == request.auth.uid && isValidId(metricId)
+          && isValidMetric(incoming())
+          && incoming().diff(existing()).affectedKeys().hasOnly(['weight', 'waist', 'bmi', 'date', 'timestamp'])
+          && incoming().userId == existing().userId;
+        allow delete: if isSignedIn() && isValidId(userId) && userId == request.auth.uid && isValidId(metricId);
+      }
+    }
+  }
+}
