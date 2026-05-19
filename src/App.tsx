@@ -495,7 +495,43 @@ function Dashboard({
     setShowAccountModal(false);
   };
 
-  const handleShare = async (title: string, text: string) => {
+  const handleShare = async () => {
+    if (metrics.length === 0) {
+      alert("Chưa có dữ liệu để chia sẻ!");
+      return;
+    }
+    const sortedAsc = [...metrics].sort((a, b) => a.date.localeCompare(b.date));
+    const firstMetric = sortedAsc[0];
+    const latestMetricInner = sortedAsc[sortedAsc.length - 1];
+
+    let startWeight = firstMetric.weight || 0;
+    let startBmi = firstMetric.bmi;
+    const calcHeightFirst = firstMetric.height || profile?.height;
+    if (!startBmi && calcHeightFirst && startWeight) {
+      const hM = calcHeightFirst / 100;
+      startBmi = parseFloat((startWeight / (hM * hM)).toFixed(1));
+    }
+
+    const allWeights = sortedAsc.map(m => m.weight).filter(w => w !== undefined && w !== null) as number[];
+    const maxWeight = allWeights.length > 0 ? Math.max(...allWeights) : startWeight;
+
+    const startDate = new Date(firstMetric.date);
+    const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0);
+    startDate.setHours(0, 0, 0, 0);
+    const diffTime = Math.abs(currentDate.getTime() - startDate.getTime());
+    const daysElapsed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    const currentWeight = latestMetricInner.weight || startWeight;
+    const weightLostStr = (startWeight - currentWeight).toFixed(1).replace(/\.0$/, '');
+
+    let text = `Thật tự hào khi tôi cố gắng mỗi ngày! Tôi đã bắt đầu hành trình với ${startWeight}kg và BMI ${startBmi || '--'}, `;
+    if (maxWeight > startWeight) {
+      text += `thậm chí có lúc lên tới ${maxWeight}kg, `;
+    }
+    text += `sau ${daysElapsed} ngày, tôi đã giảm được ${weightLostStr}kg. Hành trình bắt đầu từ những bước chân nho nhỏ! Hãy tự hào ghi lại cùng app OnlyTrack Free https://onlytracking.vercel.app của BS Đỗ Tiến Sơn nhé!`;
+    const title = "Hành trình của tôi";
+
     if (navigator.share) {
       try {
         await navigator.share({
@@ -507,7 +543,7 @@ function Dashboard({
       }
     } else {
       try {
-        await navigator.clipboard.writeText(`${title}\n${text}`);
+        await navigator.clipboard.writeText(`${text}`);
         alert("Đã sao chép vào bộ nhớ tạm!");
       } catch (err) {
         console.error("Không thể sao chép:", err);
@@ -688,7 +724,7 @@ function Dashboard({
               </div>
               {latestMetric?.weight && showStats && (
                 <button
-                  onClick={() => handleShare("Cân nặng của tôi", `Tôi đang nặng ${latestMetric.weight} kg!`)}
+                  onClick={handleShare}
                   className="p-1.5 text-slate-400 hover:text-teal-600 bg-slate-50 hover:bg-teal-50 rounded-lg transition-colors"
                   title="Chia sẻ cân nặng"
                 >
@@ -717,7 +753,7 @@ function Dashboard({
               </div>
               {latestMetric?.bmi && showStats && (
                 <button
-                  onClick={() => handleShare("Chỉ số BMI", `Chỉ số BMI của tôi hiện tại là ${latestMetric.bmi}`)}
+                  onClick={handleShare}
                   className="p-1.5 text-slate-400 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 rounded-lg transition-colors"
                   title="Chia sẻ BMI"
                 >
@@ -747,7 +783,7 @@ function Dashboard({
               </div>
               {latestMetric?.waist && showStats && (
                 <button
-                  onClick={() => handleShare("Vòng eo", `Vòng eo của tôi hiện tại là ${latestMetric.waist} cm!`)}
+                  onClick={handleShare}
                   className="p-1.5 text-slate-400 hover:text-amber-600 bg-slate-50 hover:bg-amber-50 rounded-lg transition-colors"
                   title="Chia sẻ vòng eo"
                 >
@@ -797,7 +833,7 @@ function Dashboard({
               </div>
               {whtr !== null && showStats && whtr > 0 && (
                 <button
-                  onClick={() => handleShare("Tỷ lệ WHtR", `Tỷ lệ WHtR của tôi đang là ${whtr.toFixed(2)}`)}
+                  onClick={handleShare}
                   className={cn(
                     "p-1.5 rounded-lg transition-colors bg-slate-50",
                     hasMetabolicRisk 
@@ -831,7 +867,7 @@ function Dashboard({
               </div>
               {latestMetric?.weight && showStats && (
                 <button
-                  onClick={() => handleShare("Cân nặng của tôi", `Tôi đang nặng ${latestMetric.weight} kg!`)}
+                  onClick={handleShare}
                   className="p-2 text-teal-600/50 hover:text-teal-700 hover:bg-teal-100 dark:text-teal-400/50 dark:hover:text-teal-300 dark:hover:bg-teal-900/50 rounded-xl transition-colors"
                   title="Chia sẻ cân nặng"
                 >
@@ -867,7 +903,7 @@ function Dashboard({
               </div>
               {latestMetric?.bmi && showStats && (
                 <button
-                  onClick={() => handleShare("Chỉ số BMI", `Chỉ số BMI của tôi hiện tại là ${latestMetric.bmi}`)}
+                  onClick={handleShare}
                   className="p-2 text-blue-600/50 hover:text-blue-700 hover:bg-blue-100 dark:text-blue-400/50 dark:hover:text-blue-300 dark:hover:bg-blue-900/50 rounded-xl transition-colors"
                   title="Chia sẻ BMI"
                 >
@@ -902,7 +938,7 @@ function Dashboard({
               </div>
               {latestMetric?.waist && showStats && (
                 <button
-                  onClick={() => handleShare("Vòng eo", `Vòng eo của tôi hiện tại là ${latestMetric.waist} cm!`)}
+                  onClick={handleShare}
                   className="p-2 text-amber-600/50 hover:text-amber-700 hover:bg-amber-100 dark:text-amber-400/50 dark:hover:text-amber-300 dark:hover:bg-amber-900/50 rounded-xl transition-colors"
                   title="Chia sẻ vòng eo"
                 >
@@ -962,7 +998,7 @@ function Dashboard({
               </div>
               {whtr !== null && showStats && whtr > 0 && (
                 <button
-                  onClick={() => handleShare("Tỷ lệ WHtR", `Tỷ lệ WHtR của tôi đang là ${whtr.toFixed(2)}`)}
+                  onClick={handleShare}
                   className={cn(
                     "p-2 rounded-xl transition-colors",
                     hasMetabolicRisk 
