@@ -367,7 +367,20 @@ function Dashboard({
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `betteryou_backup_${new Date().toISOString().split('T')[0]}.json`;
+      
+      const removeAccents = (str: string) => {
+        return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+      };
+      const safeNickname = (profile?.nickname || 'Guest')
+        .split(' ')
+        .map(removeAccents)
+        .join('');
+      const now = new Date();
+      const backupDate = now.toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '');
+      const backupTime = now.toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/:/g, '');
+      
+      link.download = `${safeNickname} ${backupDate} ${backupTime} OnlyTrackApp BS Son.json`;
+      
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -943,7 +956,7 @@ function Dashboard({
                 Cập nhật chỉ số mới
               </h2>
               <form onSubmit={handleSaveMetric} className="space-y-4">
-                <div>
+                <div className="w-2/3 sm:w-1/2">
                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
                     Ngày cập nhật
                   </label>
@@ -970,6 +983,7 @@ function Dashboard({
                       type="number"
                       step="0.1"
                       required
+                      inputMode="decimal"
                       value={weight}
                       onChange={(e) => setWeight(e.target.value)}
                       className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
@@ -985,6 +999,7 @@ function Dashboard({
                     <input
                       type="number"
                       step="0.1"
+                      inputMode="decimal"
                       value={waist}
                       onChange={(e) => setWaist(e.target.value)}
                       className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
@@ -1000,6 +1015,7 @@ function Dashboard({
                     <input
                       type="number"
                       step="0.1"
+                      inputMode="decimal"
                       value={height}
                       onChange={(e) => setHeight(e.target.value)}
                       className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
@@ -1287,6 +1303,29 @@ function Dashboard({
                       )}
                     </LineChart>
                   </ResponsiveContainer>
+                  {chartType === "weight" && sortedMetrics.length > 0 && (
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-4 sm:gap-8 text-sm sm:text-base bg-slate-50 dark:bg-slate-700/30 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+                      <div className="flex flex-col items-center">
+                        <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Bắt đầu</span>
+                        <span className="font-black text-slate-800 dark:text-slate-100">{sortedMetrics[0].weight} <span className="text-xs text-slate-500 font-bold font-sans">kg</span></span>
+                      </div>
+                      <div className="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
+                      <div className="flex flex-col items-center">
+                        <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Hiện tại</span>
+                        <span className="font-black text-slate-800 dark:text-slate-100">{sortedMetrics[sortedMetrics.length - 1].weight} <span className="text-xs text-slate-500 font-bold font-sans">kg</span></span>
+                      </div>
+                      <div className="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
+                      <div className="flex flex-col items-center">
+                        <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Đã giảm</span>
+                        <span className={cn(
+                          "font-black",
+                          (sortedMetrics[0].weight - sortedMetrics[sortedMetrics.length - 1].weight) > 0 ? "text-emerald-600 dark:text-emerald-400" : (sortedMetrics[0].weight - sortedMetrics[sortedMetrics.length - 1].weight) < 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-800 dark:text-slate-100"
+                        )}>
+                          {(sortedMetrics[0].weight - sortedMetrics[sortedMetrics.length - 1].weight).toFixed(1)} <span className="text-xs font-bold font-sans opacity-70">kg</span>
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex-grow flex flex-col items-center justify-center text-slate-400 bg-slate-50/50 rounded-3xl border-2 border-dashed border-slate-200">
@@ -1417,94 +1456,95 @@ function Dashboard({
             className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
             onClick={() => setShowAccountModal(false)}
           ></div>
-          <div className="relative bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center justify-between p-6 pb-4 border-b border-slate-100 dark:border-slate-700">
-              <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3">
-                <div className="p-2.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-xl">
-                  <UserCircle className="w-5 h-5" />
+          <div className="relative bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between p-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+              <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <div className="p-2 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-lg">
+                  <UserCircle className="w-4 h-4" />
                 </div>
                 Quản lí tài khoản
               </h2>
               <button
                 onClick={() => setShowAccountModal(false)}
-                className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                className="w-7 h-7 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-lg line-height-1"
               >
                 &times;
               </button>
             </div>
-            <div className="p-6">
-              <form onSubmit={handleSaveProfile} className="space-y-4">
+            <div className="p-4">
+              <form onSubmit={handleSaveProfile} className="space-y-3">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
                     Biệt danh
                   </label>
                   <input
                     type="text"
                     value={nickname}
                     onChange={(e) => setNickname(e.target.value)}
-                    className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700 dark:text-slate-100"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
-                    Slogan quyết tâm ✨
-                  </label>
-                  <textarea
-                    value={slogan}
-                    onChange={(e) => setSlogan(e.target.value)}
-                    rows={2}
-                    className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700 dark:text-slate-100 resize-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
-                    Cân nặng mục tiêu (kg)
+                <div className="w-1/2 sm:w-1/3">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
+                    Cân mục tiêu (kg)
                   </label>
                   <input
                     type="number"
                     step="0.1"
+                    inputMode="decimal"
                     value={targetWeight}
                     onChange={(e) => setTargetWeight(e.target.value)}
-                    className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700 dark:text-slate-100"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
-                    Ngày mục tiêu
+                <div className="w-2/3 sm:w-1/2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
+                    Ngày sự kiện
                   </label>
                   <input
                     type="date"
                     value={targetDate}
                     onChange={(e) => setTargetDate(e.target.value)}
-                    className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700 dark:text-slate-100"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
-                    Sự kiện mục tiêu
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
+                    Sự kiện sắp tới
                   </label>
                   <input
                     type="text"
                     value={targetEvent}
                     onChange={(e) => setTargetEvent(e.target.value)}
-                    className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-slate-700 dark:text-slate-100"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
+                    Slogan quyết tâm ✨
+                  </label>
+                  <input
+                    type="text"
+                    value={slogan}
+                    onChange={(e) => setSlogan(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={savingProfile}
-                  className="w-full py-3 mt-4 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-600 dark:hover:bg-purple-600 hover:text-white border-2 border-purple-100 dark:border-purple-800 hover:border-purple-600 rounded-xl font-bold transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0 disabled:opacity-50 disabled:transform-none"
+                  className="w-full py-2.5 mt-2 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-600 dark:hover:bg-purple-600 hover:text-white border-2 border-purple-100 dark:border-purple-800 hover:border-purple-600 rounded-xl font-bold transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0 disabled:opacity-50 disabled:transform-none text-sm"
                 >
                   {savingProfile ? "Đang cập nhật..." : "Cập nhật hồ sơ ✨"}
                 </button>
-                <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-700 flex flex-col gap-3">
-                  <div className="grid grid-cols-2 gap-3">
+                <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-700 flex flex-col gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={handleExportData}
-                      className="w-full py-3 flex items-center justify-center gap-2 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-500 hover:text-white cursor-pointer border-2 border-indigo-50 dark:border-indigo-900/30 hover:border-indigo-500 rounded-xl font-bold transition-all text-sm"
+                      className="w-full py-2 flex items-center justify-center gap-1.5 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-500 hover:text-white cursor-pointer border-2 border-indigo-50 dark:border-indigo-900/30 hover:border-indigo-500 rounded-xl font-bold transition-all text-xs"
                     >
-                      <Download className="w-4 h-4" />
+                      <Download className="w-3.5 h-3.5" />
                       Sao lưu
                     </button>
                     <div>
@@ -1518,9 +1558,9 @@ function Dashboard({
                       />
                       <label
                         htmlFor="import-backup-file"
-                        className="w-full py-3 flex items-center justify-center gap-2 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-500 hover:text-white cursor-pointer border-2 border-emerald-50 dark:border-emerald-900/30 hover:border-emerald-500 rounded-xl font-bold transition-all text-sm h-full"
+                        className="w-full py-2 flex items-center justify-center gap-1.5 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-500 hover:text-white cursor-pointer border-2 border-emerald-50 dark:border-emerald-900/30 hover:border-emerald-500 rounded-xl font-bold transition-all text-xs h-full"
                       >
-                        <Upload className="w-4 h-4" />
+                        <Upload className="w-3.5 h-3.5" />
                         Khôi phục
                       </label>
                     </div>
@@ -1537,9 +1577,9 @@ function Dashboard({
                         setShowAccountModal(false);
                       }
                     }}
-                    className="w-full py-3 flex items-center justify-center gap-2 text-red-600 bg-red-50 dark:bg-red-900/20 hover:bg-red-500 hover:text-white cursor-pointer border-2 border-red-50 dark:border-red-900/30 hover:border-red-500 rounded-xl font-bold transition-all"
+                    className="w-full py-2 flex items-center justify-center gap-1.5 text-red-600 bg-red-50 dark:bg-red-900/20 hover:bg-red-500 hover:text-white cursor-pointer border-2 border-red-50 dark:border-red-900/30 hover:border-red-500 rounded-xl font-bold transition-all text-xs"
                   >
-                    <AlertTriangle className="w-4 h-4" />
+                    <AlertTriangle className="w-3.5 h-3.5" />
                     Xoá toàn bộ dữ liệu
                   </button>
                 </div>
