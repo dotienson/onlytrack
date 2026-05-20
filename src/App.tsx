@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
   Legend,
   ReferenceLine,
+  Brush,
 } from "recharts";
 import {
   LogOut,
@@ -36,6 +37,8 @@ import {
   Share2,
   Download,
   Upload,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { clsx, type ClassValue } from "clsx";
@@ -43,92 +46,6 @@ import { twMerge } from "tailwind-merge";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
-}
-
-const WheelPickerColumn = ({ 
-  value, 
-  onChange, 
-  min = 0, 
-  max = 9, 
-}: { 
-  value: number; 
-  onChange: (v: number) => void;
-  min?: number;
-  max?: number;
-}) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const items = Array.from({ length: max - min + 1 }, (_, i) => min + i);
-  const itemHeight = 40;
-
-  useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = (value - min) * itemHeight;
-    }
-  }, []);
-
-  const handleScroll = () => {
-    if (!containerRef.current) return;
-    const scrollY = containerRef.current.scrollTop;
-    const index = Math.round(scrollY / itemHeight);
-    const newValue = min + index;
-    if (newValue !== value && newValue >= min && newValue <= max) {
-      onChange(newValue);
-    }
-  };
-
-  return (
-    <div className="relative h-[120px] w-10 sm:w-12 overflow-hidden select-none" 
-         style={{ maskImage: "linear-gradient(to bottom, transparent, black 35%, black 65%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, transparent, black 35%, black 65%, transparent)" }}>
-      <div className="absolute top-[40px] left-0 right-0 h-[40px] bg-slate-100/50 dark:bg-slate-700/50 rounded-xl pointer-events-none border border-slate-200 dark:border-slate-600" />
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        className="h-full overflow-y-auto snap-y snap-mandatory scroll-smooth hide-scroll"
-      >
-        <div className="h-[40px]" />
-        {items.map((item) => (
-          <div
-            key={item}
-            className={cn(
-              "h-[40px] snap-center flex items-center justify-center text-3xl font-bold transition-all duration-200",
-              item === value ? "text-indigo-600 dark:text-indigo-400 scale-110" : "text-slate-400 dark:text-slate-500 scale-90 opacity-40 hover:opacity-100 cursor-pointer"
-            )}
-            onClick={() => {
-              if (containerRef.current) {
-                containerRef.current.scrollTo({ top: (item - min) * itemHeight, behavior: "smooth" });
-              }
-            }}
-          >
-            {item}
-          </div>
-        ))}
-        <div className="h-[40px]" />
-      </div>
-    </div>
-  );
-};
-
-function ComboLockPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const h = Math.floor((value % 1000) / 100);
-  const t = Math.floor((value % 100) / 10);
-  const u = Math.floor(value % 10);
-  const d = Math.round((value * 10) % 10);
-
-  const setH = (v: number) => onChange(v * 100 + t * 10 + u + d / 10);
-  const setT = (v: number) => onChange(h * 100 + v * 10 + u + d / 10);
-  const setU = (v: number) => onChange(h * 100 + t * 10 + v + d / 10);
-  const setD = (v: number) => onChange(h * 100 + t * 10 + u + v / 10);
-
-  return (
-    <div className="flex items-center justify-center gap-1 sm:gap-2">
-      <WheelPickerColumn value={h} onChange={setH} min={0} max={2} />
-      <WheelPickerColumn value={t} onChange={setT} min={0} max={9} />
-      <WheelPickerColumn value={u} onChange={setU} min={0} max={9} />
-      <span className="text-3xl font-bold text-slate-300 dark:text-slate-600 mb-1">.</span>
-      <WheelPickerColumn value={d} onChange={setD} min={0} max={9} />
-      <span className="text-xl font-bold text-slate-400 mt-2 ml-2">kg</span>
-    </div>
-  );
 }
 
 function TrendDot({ cx, cy, isLast, color, index, data, dataKey, threshold = 0 }: any) {
@@ -246,6 +163,147 @@ function CountdownBanner({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MonthlyCheckin({ profile, updateProfile }: any) {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 is Sunday
+  
+  // Adjusted for Monday start (1 is Monday, 7 is Sunday)
+  const startOffset = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
+
+  const activities = profile?.activities || {};
+  const [legend, setLegend] = useState(profile?.activityLegend || {});
+  const [isEditingLegend, setIsEditingLegend] = useState(false);
+
+  useEffect(() => {
+    // update local state if profile changes
+    setLegend(profile?.activityLegend || {});
+  }, [profile?.activityLegend]);
+
+  const handleDayClick = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const current = activities[dateStr] || 0;
+    const next = (current + 1) % 5;
+    
+    const newActivities = { ...activities };
+    if (next === 0) {
+      delete newActivities[dateStr];
+    } else {
+      newActivities[dateStr] = next;
+    }
+    
+    updateProfile({ activities: newActivities });
+  };
+
+  const handleLegendChange = (colorIndex: number, value: string) => {
+    setLegend({ ...legend, [colorIndex]: value });
+    setIsEditingLegend(true);
+  };
+
+  const saveLegend = () => {
+    updateProfile({ activityLegend: legend });
+    setIsEditingLegend(false);
+  };
+
+  const getColorClass = (index: number) => {
+    switch(index) {
+      case 1: return "bg-rose-500 text-white shadow-sm shadow-rose-500/50";
+      case 2: return "bg-sky-500 text-white shadow-sm shadow-sky-500/50";
+      case 3: return "bg-amber-400 text-white shadow-sm shadow-amber-400/50";
+      case 4: return "bg-purple-500 text-white shadow-sm shadow-purple-500/50";
+      default: return "bg-slate-100 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/50 outline outline-1 outline-slate-200 dark:outline-slate-700/50";
+    }
+  };
+
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+
+  // Determine active colors
+  const activeColors = Array.from(new Set(Object.values(activities) as number[])).filter(Boolean).sort();
+
+  return (
+    <div className="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 mt-4 transition-all hover:shadow-md">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+          <div className="p-1.5 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg">
+            <Calendar className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+          </div>
+          Lịch tháng
+        </h3>
+        <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900/50 px-2 py-1 rounded-xl border border-slate-100 dark:border-slate-700/50">
+          <button onClick={prevMonth} className="p-1 text-slate-400 hover:text-indigo-500 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+          <span className="text-xs font-black w-20 text-center uppercase tracking-widest text-slate-600 dark:text-slate-300">
+            Th {month + 1}/{year}
+          </span>
+          <button onClick={nextMonth} className="p-1 text-slate-400 hover:text-indigo-500 transition-colors"><ChevronRight className="w-4 h-4" /></button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1.5 sm:gap-2 mb-4">
+        {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(d => (
+          <div key={d} className="text-center text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 py-1">
+            {d}
+          </div>
+        ))}
+        {Array.from({ length: startOffset }).map((_, i) => (
+          <div key={`empty-${i}`} className="aspect-square" />
+        ))}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const day = i + 1;
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const current = activities[dateStr] || 0;
+          const isToday = new Date().toDateString() === new Date(year, month, day).toDateString();
+          
+          return (
+            <button
+              key={day}
+              onClick={() => handleDayClick(day)}
+              className={cn(
+                "aspect-square rounded-xl flex items-center justify-center text-sm font-bold transition-all transform active:scale-95",
+                getColorClass(current),
+                isToday && current === 0 && "outline outline-2 outline-indigo-500/50 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20"
+              )}
+            >
+              {day}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeColors.length > 0 && (
+        <div className="pt-4 mt-2 border-t border-slate-100 dark:border-slate-700/50 space-y-2">
+          {activeColors.map((colorIndex) => (
+            <div key={colorIndex} className="flex items-center gap-3">
+              <div className={cn("w-4 h-4 rounded-full flex-shrink-0", getColorClass(colorIndex))} />
+              <input
+                type="text"
+                value={legend[colorIndex] || ""}
+                onChange={(e) => handleLegendChange(colorIndex, e.target.value)}
+                className="flex-grow bg-slate-50 dark:bg-slate-900/50 text-xs sm:text-sm px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700/50 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-700 dark:text-slate-300 transition-colors"
+                maxLength={40}
+              />
+            </div>
+          ))}
+          {isEditingLegend && (
+            <div className="flex justify-end mt-2 pt-2">
+              <button
+                onClick={saveLegend}
+                className="px-4 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-xs sm:text-sm font-bold rounded-lg transition-colors shadow-sm"
+              >
+                Lưu chú thích
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -388,11 +446,6 @@ function Dashboard({
     }
   }, [rememberHeight, height]);
 
-  const [showDailyPopup, setShowDailyPopup] = useState(false);
-  const [dailyPopupHandled, setDailyPopupHandled] = useState(false);
-  const [dailyWeight, setDailyWeight] = useState(60.0);
-  const [dailyWaist, setDailyWaist] = useState("");
-
   const [targetWeight, setTargetWeight] = useState("");
   const [nickname, setNickname] = useState("");
   const [slogan, setSlogan] = useState("");
@@ -430,44 +483,6 @@ function Dashboard({
     // If no height is set in input and we lack height but have profile height, we can seed it initially
     if (height === "" && profile?.height) setHeight(profile.height.toString());
   }, [profile?.height]);
-
-  useEffect(() => {
-    if (!loading && !dailyPopupHandled) {
-      if (metrics.length === 0) {
-        setShowDailyPopup(true);
-      } else {
-        const sortedDesc = [...metrics].sort((a,b) => b.date.localeCompare(a.date));
-        
-        if (sortedDesc[0].date === date) {
-          setDailyWeight(sortedDesc[0].weight || 60.0);
-          if (sortedDesc[0].waist) setDailyWaist(sortedDesc[0].waist.toString());
-        } else {
-          setDailyWeight(sortedDesc[0].weight || 60.0);
-        }
-        setShowDailyPopup(true);
-      }
-      setDailyPopupHandled(true);
-    }
-  }, [loading, metrics, dailyPopupHandled, date]);
-
-  const handleSaveDaily = async () => {
-    if (dailyWeight <= 0) return;
-    setSavingMetric(true);
-    
-    const parsedWaist = dailyWaist ? parseFloat(String(dailyWaist).replace(/,/g, ".")) : undefined;
-    const parsedHeight = (rememberHeight && height) ? parseFloat(String(height).replace(/,/g, ".")) : undefined;
-
-    await addMetric(
-      dailyWeight,
-      parsedHeight,
-      parsedWaist,
-      date,
-      undefined // note
-    );
-    setSavingMetric(false);
-    setShowDailyPopup(false);
-  };
-
 
   useEffect(() => {
     if (!("Notification" in window)) return;
@@ -737,6 +752,7 @@ function Dashboard({
   }, [sortedMetrics, profile?.height]);
 
   const latestMetric = parsedMetrics[parsedMetrics.length - 1];
+  const hasTodayMetric = metrics.some(m => m.date === new Date().toISOString().split("T")[0]);
 
   const chartDomainX = useMemo(() => {
     const now = Date.now();
@@ -1201,7 +1217,7 @@ function Dashboard({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-5 space-y-6">
             {/* Input Metric */}
-            <div className={cn(bentoCard, "border-2 border-indigo-50 dark:border-indigo-900/30")}>
+            <div className={cn(bentoCard, "border-2 transition-all duration-500", !hasTodayMetric ? "border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.3)] animate-[pulse_2s_ease-in-out_infinite]" : "border-indigo-50 dark:border-indigo-900/30")}>
               <h2 className="text-xl font-black text-slate-900 dark:text-white mb-6 flex items-center gap-3">
                 <div className="p-2.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
                   <Plus className="w-5 h-5" />
@@ -1281,7 +1297,7 @@ function Dashboard({
                         className="rounded border-slate-300 text-indigo-500 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-700 dark:checked:bg-indigo-500"
                       />
                       <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 select-none">
-                        Ghi nhớ chiều cao
+                        Ghi nhớ
                       </span>
                     </label>
                   </div>
@@ -1307,7 +1323,7 @@ function Dashboard({
                   disabled={savingMetric || !weight}
                   className="w-full py-3 mt-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:dark:bg-slate-800 disabled:text-slate-400 disabled:dark:text-slate-500 text-white rounded-xl font-bold transition-all shadow-md hover:shadow-xl hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0 disabled:shadow-none disabled:transform-none"
                 >
-                  {savingMetric ? "Đang lưu..." : "Lưu chỉ số 🚀"}
+                  {savingMetric ? "Đang lưu..." : "Lưu chỉ số"}
                 </button>
               </form>
             </div>
@@ -1422,39 +1438,40 @@ function Dashboard({
                         width={60}
                       />
                       <Tooltip
-                        content={({ active, payload, label }) => {
+                        content={({ active, payload }) => {
                           if (active && payload && payload.length) {
                             const data = payload[0].payload;
                             return (
                               <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 dark:border-slate-700">
-                                <p className="text-slate-500 dark:text-slate-400 font-bold mb-2 text-sm">
-                                  {new Date(data.date).toLocaleDateString(
-                                    "vi-VN",
-                                  )}
+                                <p className="text-slate-500 dark:text-slate-400 font-bold mb-3 text-sm border-b border-slate-100 dark:border-slate-700 pb-2">
+                                  {new Date(data.date).toLocaleDateString("vi-VN", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                                 </p>
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className="w-3 h-3 rounded-full"
-                                    style={{
-                                      backgroundColor: payload[0].color,
-                                    }}
-                                  ></span>
-                                  <p className="text-slate-800 dark:text-slate-100 font-black text-lg">
-                                    {username}:{" "}
-                                    <span style={{ color: payload[0].color }}>
-                                      {payload[0].value}
-                                    </span>{" "}
-                                    {chartType === "weight"
-                                      ? "kg"
-                                      : chartType === "waist"
-                                        ? "cm"
-                                        : ""}
-                                  </p>
+                                <div className="space-y-2 mb-3">
+                                  {data.weight && (
+                                    <div className="flex items-center justify-between gap-4">
+                                      <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-indigo-500"></div>Cân nặng</span>
+                                      <span className="font-black text-slate-800 dark:text-slate-100">{data.weight} kg</span>
+                                    </div>
+                                  )}
+                                  {data.bmi && (
+                                    <div className="flex items-center justify-between gap-4">
+                                      <span className="text-sm font-semibold text-sky-600 dark:text-sky-400 flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-sky-500"></div>BMI</span>
+                                      <span className="font-black text-slate-800 dark:text-slate-100">{data.bmi}</span>
+                                    </div>
+                                  )}
+                                  {data.waist && (
+                                    <div className="flex items-center justify-between gap-4">
+                                      <span className="text-sm font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber-500"></div>Vòng eo</span>
+                                      <span className="font-black text-slate-800 dark:text-slate-100">{data.waist} cm</span>
+                                    </div>
+                                  )}
                                 </div>
                                 {data.note && (
-                                  <p className="text-slate-500 dark:text-slate-400 text-xs mt-2 italic max-w-[200px]">
-                                    "{data.note}"
-                                  </p>
+                                  <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                                    <p className="text-slate-600 dark:text-slate-300 text-sm italic max-w-[220px]">
+                                      "{data.note}"
+                                    </p>
+                                  </div>
                                 )}
                               </div>
                             );
@@ -1598,6 +1615,8 @@ function Dashboard({
                 </div>
               )}
             </div>
+
+            <MonthlyCheckin profile={profile} updateProfile={updateProfile} />
 
             {/* History Table */}
             <div
@@ -1870,77 +1889,6 @@ function Dashboard({
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showDailyPopup && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-            onClick={() => setShowDailyPopup(false)}
-          ></div>
-          <div className="relative bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-4 sm:p-5">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/50 rounded-full flex items-center justify-center mb-2">
-                  <Scale className="w-6 h-6 text-indigo-500 hover:scale-110 transition-transform" />
-                </div>
-                <h2 className="text-xl font-black text-slate-900 dark:text-white mb-1 tracking-tight">Chào ngày mới!</h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-4">Hãy cập nhật số đo hôm nay của bạn nhé.</p>
-              </div>
-
-              <div className="space-y-3">
-                <div className="bg-slate-50 dark:bg-slate-700/50 p-2 sm:p-3 rounded-2xl border-2 border-slate-100 dark:border-slate-700">
-                  <ComboLockPicker value={dailyWeight} onChange={setDailyWeight} />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
-                      Vòng eo <span className="text-slate-400 font-medium">(cm)</span>
-                    </label>
-                    <input
-                      type="text"
-                      autoComplete="off"
-                      inputMode="decimal"
-                      value={dailyWaist}
-                      onChange={handleDecimalInput(setDailyWaist)}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base text-slate-800 dark:text-white text-center"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
-                      Chiều cao <span className="text-slate-400 font-medium">(cm)</span>
-                    </label>
-                    <input
-                      type="text"
-                      autoComplete="off"
-                      inputMode="decimal"
-                      value={height}
-                      onChange={handleDecimalInput(setHeight)}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base text-slate-800 dark:text-white text-center"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <button
-                  onClick={handleSaveDaily}
-                  disabled={savingMetric}
-                  className="w-full py-3 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-bold transition-all hover:shadow-lg active:scale-[0.98] disabled:opacity-50 text-sm"
-                >
-                  {savingMetric ? "Đang lưu..." : "Lưu hôm nay"}
-                </button>
-                <button 
-                  onClick={() => setShowDailyPopup(false)}
-                  className="w-full mt-2 py-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 font-bold transition-colors text-sm"
-                >
-                  Để sau
-                </button>
-              </div>
             </div>
           </div>
         </div>

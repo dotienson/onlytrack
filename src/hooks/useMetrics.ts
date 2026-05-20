@@ -35,6 +35,8 @@ export interface UserProfile {
   targetEvent?: string;
   reminderTime?: string;
   updatedAt: any;
+  activities?: Record<string, number>; // date "YYYY-MM-DD" -> color index (1,2,3,4)
+  activityLegend?: Record<string, string>; // "1" -> "Gym", "2" -> "Trực", etc.
 }
 
 export enum OperationType {
@@ -115,7 +117,24 @@ export function useMetrics(user: User | null, isGuest: boolean) {
 
       const storedMetrics = localStorage.getItem(LS_METRICS_KEY);
       if (storedMetrics) {
-        setMetrics(JSON.parse(storedMetrics));
+        try {
+          let parsed = JSON.parse(storedMetrics);
+          parsed = parsed.map((m: any) => {
+            if (typeof m.weight === 'object' && m.weight !== null) {
+              return {
+                ...m,
+                weight: m.weight.weight,
+                height: m.weight.height || m.height,
+                waist: m.weight.waist || m.waist
+              };
+            }
+            return m;
+          }).filter((m: any) => typeof m.weight === 'number');
+          localStorage.setItem(LS_METRICS_KEY, JSON.stringify(parsed));
+          setMetrics(parsed);
+        } catch {
+          setMetrics([]);
+        }
       }
       setLoading(false);
       return;
@@ -159,9 +178,20 @@ export function useMetrics(user: User | null, isGuest: boolean) {
       const unsubMetrics = onSnapshot(
         q,
         (snapshot) => {
-          const data = snapshot.docs.map(
-            (d) => ({ id: d.id, ...d.data() }) as Metric,
+          let data = snapshot.docs.map(
+            (d) => ({ id: d.id, ...d.data() }) as any,
           );
+          data = data.map((m: any) => {
+            if (typeof m.weight === 'object' && m.weight !== null) {
+              return {
+                ...m,
+                weight: m.weight.weight,
+                height: m.weight.height || m.height,
+                waist: m.weight.waist || m.waist
+              };
+            }
+            return m;
+          }).filter((m: any) => typeof m.weight === 'number') as Metric[];
           setMetrics(data);
           setLoading(false);
         },
