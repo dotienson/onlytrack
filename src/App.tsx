@@ -389,6 +389,7 @@ export default function App() {
               <input
                 type="text"
                 autoComplete="off"
+                placeholder="Xin nhập mã BS.Sơn cung cấp"
                 value={passcode}
                 onChange={(e) => {
                   setPasscode(e.target.value);
