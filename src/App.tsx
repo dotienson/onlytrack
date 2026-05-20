@@ -132,6 +132,9 @@ function ComboLockPicker({ value, onChange }: { value: number; onChange: (v: num
 }
 
 function TrendDot({ cx, cy, isLast, color, index, data, dataKey, threshold = 0 }: any) {
+  if (typeof cx !== "number" || typeof cy !== "number" || isNaN(cx) || isNaN(cy)) {
+    return null;
+  }
   if (!isLast) {
     return <circle cx={cx} cy={cy} r={4} fill={color} stroke="#fff" strokeWidth={2} key={index} />;
   }
@@ -450,12 +453,17 @@ function Dashboard({
   const handleSaveDaily = async () => {
     if (dailyWeight <= 0) return;
     setSavingMetric(true);
-    await addMetric({
-      date, // today
-      weight: dailyWeight,
-      waist: dailyWaist ? parseFloat(dailyWaist.replace(/,/g, ".")) : undefined,
-      height: (rememberHeight && height) ? parseFloat(height.replace(/,/g, ".")) : undefined,
-    });
+    
+    const parsedWaist = dailyWaist ? parseFloat(String(dailyWaist).replace(/,/g, ".")) : undefined;
+    const parsedHeight = (rememberHeight && height) ? parseFloat(String(height).replace(/,/g, ".")) : undefined;
+
+    await addMetric(
+      dailyWeight,
+      parsedHeight,
+      parsedWaist,
+      date,
+      undefined // note
+    );
     setSavingMetric(false);
     setShowDailyPopup(false);
   };
