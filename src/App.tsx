@@ -45,6 +45,92 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const WheelPickerColumn = ({ 
+  value, 
+  onChange, 
+  min = 0, 
+  max = 9, 
+}: { 
+  value: number; 
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const items = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+  const itemHeight = 48;
+
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = (value - min) * itemHeight;
+    }
+  }, []);
+
+  const handleScroll = () => {
+    if (!containerRef.current) return;
+    const scrollY = containerRef.current.scrollTop;
+    const index = Math.round(scrollY / itemHeight);
+    const newValue = min + index;
+    if (newValue !== value && newValue >= min && newValue <= max) {
+      onChange(newValue);
+    }
+  };
+
+  return (
+    <div className="relative h-[144px] w-12 sm:w-16 overflow-hidden select-none" 
+         style={{ maskImage: "linear-gradient(to bottom, transparent, black 35%, black 65%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, transparent, black 35%, black 65%, transparent)" }}>
+      <div className="absolute top-[48px] left-0 right-0 h-[48px] bg-slate-100/50 dark:bg-slate-700/50 rounded-xl pointer-events-none border border-slate-200 dark:border-slate-600" />
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="h-full overflow-y-auto snap-y snap-mandatory scroll-smooth hide-scroll"
+      >
+        <div className="h-[48px]" />
+        {items.map((item) => (
+          <div
+            key={item}
+            className={cn(
+              "h-[48px] snap-center flex items-center justify-center text-3xl font-bold transition-all duration-200",
+              item === value ? "text-indigo-600 dark:text-indigo-400 scale-110" : "text-slate-400 dark:text-slate-500 scale-90 opacity-40 hover:opacity-100 cursor-pointer"
+            )}
+            onClick={() => {
+              if (containerRef.current) {
+                containerRef.current.scrollTo({ top: (item - min) * itemHeight, behavior: "smooth" });
+              }
+            }}
+          >
+            {item}
+          </div>
+        ))}
+        <div className="h-[48px]" />
+      </div>
+    </div>
+  );
+};
+
+function ComboLockPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const h = Math.floor((value % 1000) / 100);
+  const t = Math.floor((value % 100) / 10);
+  const u = Math.floor(value % 10);
+  const d = Math.round((value * 10) % 10);
+
+  const setH = (v: number) => onChange(v * 100 + t * 10 + u + d / 10);
+  const setT = (v: number) => onChange(h * 100 + v * 10 + u + d / 10);
+  const setU = (v: number) => onChange(h * 100 + t * 10 + v + d / 10);
+  const setD = (v: number) => onChange(h * 100 + t * 10 + u + v / 10);
+
+  return (
+    <div className="flex items-center justify-center gap-1 sm:gap-2">
+      <WheelPickerColumn value={h} onChange={setH} min={0} max={2} />
+      <WheelPickerColumn value={t} onChange={setT} min={0} max={9} />
+      <WheelPickerColumn value={u} onChange={setU} min={0} max={9} />
+      <span className="text-3xl font-bold text-slate-300 dark:text-slate-600 mb-1">.</span>
+      <WheelPickerColumn value={d} onChange={setD} min={0} max={9} />
+      <span className="text-xl font-bold text-slate-400 mt-2 ml-2">kg</span>
+    </div>
+  );
+}
+
 function CountdownBanner({
   targetDate,
   targetEvent,
@@ -219,7 +305,6 @@ export default function App() {
             <div className="pt-2">
               <input
                 type="text"
-                placeholder="Nhập mã kết nối"
                 value={passcode}
                 onChange={(e) => {
                   setPasscode(e.target.value);
@@ -267,7 +352,21 @@ function Dashboard({
   const [waist, setWaist] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [height, setHeight] = useState("");
+  const [rememberHeight, setRememberHeight] = useState(() => localStorage.getItem("remember_height") === "true");
+  const [height, setHeight] = useState(() => localStorage.getItem("saved_height") || "");
+
+  useEffect(() => {
+    localStorage.setItem("remember_height", rememberHeight.toString());
+    if (rememberHeight) {
+      localStorage.setItem("saved_height", height);
+    }
+  }, [rememberHeight, height]);
+
+  const [showDailyPopup, setShowDailyPopup] = useState(false);
+  const [dailyPopupHandled, setDailyPopupHandled] = useState(false);
+  const [dailyWeight, setDailyWeight] = useState(60.0);
+  const [dailyWaist, setDailyWaist] = useState("");
+
   const [targetWeight, setTargetWeight] = useState("");
   const [nickname, setNickname] = useState("");
   const [slogan, setSlogan] = useState("");
@@ -305,6 +404,35 @@ function Dashboard({
     // If no height is set in input and we lack height but have profile height, we can seed it initially
     if (height === "" && profile?.height) setHeight(profile.height.toString());
   }, [profile?.height]);
+
+  useEffect(() => {
+    if (!loading && !dailyPopupHandled) {
+      if (metrics.length === 0) {
+        setShowDailyPopup(true);
+      } else {
+        const sortedDesc = [...metrics].sort((a,b) => b.date.localeCompare(a.date));
+        if (sortedDesc[0].date !== date) { // date is today
+          setDailyWeight(sortedDesc[0].weight || 60.0);
+          setShowDailyPopup(true);
+        }
+      }
+      setDailyPopupHandled(true);
+    }
+  }, [loading, metrics, dailyPopupHandled, date]);
+
+  const handleSaveDaily = async () => {
+    if (dailyWeight <= 0) return;
+    setSavingMetric(true);
+    await addMetric({
+      date, // today
+      weight: dailyWeight,
+      waist: dailyWaist ? parseFloat(dailyWaist.replace(/,/g, ".")) : undefined,
+      height: (rememberHeight && height) ? parseFloat(height.replace(/,/g, ".")) : undefined,
+    });
+    setSavingMetric(false);
+    setShowDailyPopup(false);
+  };
+
 
   useEffect(() => {
     if (!("Notification" in window)) return;
@@ -1094,12 +1222,25 @@ function Dashboard({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
-                      Chiều cao
-                      <span className="text-slate-400 dark:text-slate-500 font-medium ml-1 block sm:inline">
-                        (cm)
-                      </span>
-                    </label>
+                    <div className="flex items-center justify-between mb-2 ml-1">
+                      <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
+                        Chiều cao
+                        <span className="text-slate-400 dark:text-slate-500 font-medium ml-1 block sm:inline">
+                          (cm)
+                        </span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={rememberHeight}
+                          onChange={(e) => setRememberHeight(e.target.checked)}
+                          className="rounded border-slate-300 text-indigo-500 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-700 dark:checked:bg-indigo-500"
+                        />
+                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 select-none">
+                          Ghi nhớ
+                        </span>
+                      </label>
+                    </div>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -1703,6 +1844,75 @@ function Dashboard({
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDailyPopup && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => setShowDailyPopup(false)}
+          ></div>
+          <div className="relative bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-4 sm:p-5">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/50 rounded-full flex items-center justify-center mb-2">
+                  <Scale className="w-6 h-6 text-indigo-500 hover:scale-110 transition-transform" />
+                </div>
+                <h2 className="text-xl font-black text-slate-900 dark:text-white mb-1 tracking-tight">Chào ngày mới!</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-4">Hãy cập nhật số đo hôm nay của bạn nhé.</p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="bg-slate-50 dark:bg-slate-700/50 p-2 sm:p-3 rounded-2xl border-2 border-slate-100 dark:border-slate-700">
+                  <ComboLockPicker value={dailyWeight} onChange={setDailyWeight} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
+                      Vòng eo <span className="text-slate-400 font-medium">(cm)</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={dailyWaist}
+                      onChange={handleDecimalInput(setDailyWaist)}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base text-slate-800 dark:text-white text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
+                      Chiều cao <span className="text-slate-400 font-medium">(cm)</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={height}
+                      onChange={handleDecimalInput(setHeight)}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base text-slate-800 dark:text-white text-center"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <button
+                  onClick={handleSaveDaily}
+                  disabled={savingMetric}
+                  className="w-full py-3 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-bold transition-all hover:shadow-lg active:scale-[0.98] disabled:opacity-50 text-sm"
+                >
+                  {savingMetric ? "Đang lưu..." : "Lưu hôm nay"}
+                </button>
+                <button 
+                  onClick={() => setShowDailyPopup(false)}
+                  className="w-full mt-2 py-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 font-bold transition-colors text-sm"
+                >
+                  Để sau
+                </button>
+              </div>
             </div>
           </div>
         </div>
