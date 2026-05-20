@@ -58,7 +58,7 @@ const WheelPickerColumn = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const items = Array.from({ length: max - min + 1 }, (_, i) => min + i);
-  const itemHeight = 48;
+  const itemHeight = 40;
 
   useEffect(() => {
     if (containerRef.current) {
@@ -77,20 +77,20 @@ const WheelPickerColumn = ({
   };
 
   return (
-    <div className="relative h-[144px] w-12 sm:w-16 overflow-hidden select-none" 
+    <div className="relative h-[120px] w-10 sm:w-12 overflow-hidden select-none" 
          style={{ maskImage: "linear-gradient(to bottom, transparent, black 35%, black 65%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, transparent, black 35%, black 65%, transparent)" }}>
-      <div className="absolute top-[48px] left-0 right-0 h-[48px] bg-slate-100/50 dark:bg-slate-700/50 rounded-xl pointer-events-none border border-slate-200 dark:border-slate-600" />
+      <div className="absolute top-[40px] left-0 right-0 h-[40px] bg-slate-100/50 dark:bg-slate-700/50 rounded-xl pointer-events-none border border-slate-200 dark:border-slate-600" />
       <div
         ref={containerRef}
         onScroll={handleScroll}
         className="h-full overflow-y-auto snap-y snap-mandatory scroll-smooth hide-scroll"
       >
-        <div className="h-[48px]" />
+        <div className="h-[40px]" />
         {items.map((item) => (
           <div
             key={item}
             className={cn(
-              "h-[48px] snap-center flex items-center justify-center text-3xl font-bold transition-all duration-200",
+              "h-[40px] snap-center flex items-center justify-center text-3xl font-bold transition-all duration-200",
               item === value ? "text-indigo-600 dark:text-indigo-400 scale-110" : "text-slate-400 dark:text-slate-500 scale-90 opacity-40 hover:opacity-100 cursor-pointer"
             )}
             onClick={() => {
@@ -102,7 +102,7 @@ const WheelPickerColumn = ({
             {item}
           </div>
         ))}
-        <div className="h-[48px]" />
+        <div className="h-[40px]" />
       </div>
     </div>
   );
@@ -129,6 +129,28 @@ function ComboLockPicker({ value, onChange }: { value: number; onChange: (v: num
       <span className="text-xl font-bold text-slate-400 mt-2 ml-2">kg</span>
     </div>
   );
+}
+
+function TrendDot({ cx, cy, isLast, color, index, data, dataKey, threshold = 0 }: any) {
+  if (!isLast) {
+    return <circle cx={cx} cy={cy} r={4} fill={color} stroke="#fff" strokeWidth={2} key={index} />;
+  }
+  let trend: "up" | "down" | "right" = "right";
+  if (index > 0) {
+    const current = data[index]?.[dataKey];
+    const prev = data[index - 1]?.[dataKey];
+    if (typeof current === 'number' && typeof prev === 'number') {
+      if (current - prev > threshold) trend = "up";
+      else if (current - prev < -threshold) trend = "down";
+    }
+  }
+  const s = 5.5; // Slightly smaller to match dot visual size roughly
+  let d = "";
+  if (trend === "up") d = `M ${cx} ${cy - s - 1} L ${cx - s - 1} ${cy + s} L ${cx + s + 1} ${cy + s} Z`;
+  else if (trend === "down") d = `M ${cx} ${cy + s + 1} L ${cx - s - 1} ${cy - s} L ${cx + s + 1} ${cy - s} Z`;
+  else d = `M ${cx + s + 1} ${cy} L ${cx - s} ${cy - s - 1} L ${cx - s} ${cy + s + 1} Z`;
+  
+  return <path d={d} fill="#ef4444" stroke="#fff" strokeWidth={1.5} strokeLinejoin="round" key={index} />;
 }
 
 function CountdownBanner({
@@ -305,6 +327,7 @@ export default function App() {
             <div className="pt-2">
               <input
                 type="text"
+                autoComplete="off"
                 value={passcode}
                 onChange={(e) => {
                   setPasscode(e.target.value);
@@ -411,10 +434,14 @@ function Dashboard({
         setShowDailyPopup(true);
       } else {
         const sortedDesc = [...metrics].sort((a,b) => b.date.localeCompare(a.date));
-        if (sortedDesc[0].date !== date) { // date is today
+        
+        if (sortedDesc[0].date === date) {
           setDailyWeight(sortedDesc[0].weight || 60.0);
-          setShowDailyPopup(true);
+          if (sortedDesc[0].waist) setDailyWaist(sortedDesc[0].waist.toString());
+        } else {
+          setDailyWeight(sortedDesc[0].weight || 60.0);
         }
+        setShowDailyPopup(true);
       }
       setDailyPopupHandled(true);
     }
@@ -1200,6 +1227,7 @@ function Dashboard({
                     <input
                       type="text"
                       required
+                      autoComplete="off"
                       inputMode="decimal"
                       value={weight}
                       onChange={handleDecimalInput(setWeight)}
@@ -1215,6 +1243,7 @@ function Dashboard({
                     </label>
                     <input
                       type="text"
+                      autoComplete="off"
                       inputMode="decimal"
                       value={waist}
                       onChange={handleDecimalInput(setWaist)}
@@ -1222,32 +1251,31 @@ function Dashboard({
                     />
                   </div>
                   <div>
-                    <div className="flex items-center justify-between mb-2 ml-1">
-                      <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
-                        Chiều cao
-                        <span className="text-slate-400 dark:text-slate-500 font-medium ml-1 block sm:inline">
-                          (cm)
-                        </span>
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={rememberHeight}
-                          onChange={(e) => setRememberHeight(e.target.checked)}
-                          className="rounded border-slate-300 text-indigo-500 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-700 dark:checked:bg-indigo-500"
-                        />
-                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 select-none">
-                          Ghi nhớ
-                        </span>
-                      </label>
-                    </div>
+                    <label className="block text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 ml-1">
+                      Chiều cao
+                      <span className="text-slate-400 dark:text-slate-500 font-medium ml-1 block sm:inline">
+                        (cm)
+                      </span>
+                    </label>
                     <input
                       type="text"
+                      autoComplete="off"
                       inputMode="decimal"
                       value={height}
                       onChange={handleDecimalInput(setHeight)}
                       className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
                     />
+                    <label className="flex items-center gap-1.5 cursor-pointer mt-2 ml-1">
+                      <input
+                        type="checkbox"
+                        checked={rememberHeight}
+                        onChange={(e) => setRememberHeight(e.target.checked)}
+                        className="rounded border-slate-300 text-indigo-500 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-700 dark:checked:bg-indigo-500"
+                      />
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 select-none">
+                        Ghi nhớ chiều cao
+                      </span>
+                    </label>
                   </div>
                 </div>
                 <div>
@@ -1259,6 +1287,7 @@ function Dashboard({
                   </label>
                   <input
                     type="text"
+                    autoComplete="off"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 dark:text-slate-100"
@@ -1450,21 +1479,16 @@ function Dashboard({
                           name="Cân nặng (kg)"
                           stroke="#4f46e5"
                           strokeWidth={4}
-                          dot={(props: any) => {
-                            const isLast =
-                              props.index === sortedMetrics.length - 1;
-                            return (
-                              <circle
-                                cx={props.cx}
-                                cy={props.cy}
-                                r={isLast ? 6 : 4}
-                                fill={isLast ? "#ef4444" : "#4f46e5"}
-                                stroke="#fff"
-                                strokeWidth={2}
-                                key={props.index}
-                              />
-                            );
-                          }}
+                          dot={(props: any) => (
+                            <TrendDot 
+                              {...props} 
+                              isLast={props.index === sortedMetrics.length - 1} 
+                              color="#4f46e5" 
+                              data={parsedMetrics} 
+                              dataKey="weight" 
+                              threshold={0.5} 
+                            />
+                          )}
                           activeDot={{
                             r: 8,
                             fill: "#3730a3",
@@ -1481,21 +1505,16 @@ function Dashboard({
                           name="Chỉ số BMI"
                           stroke="#0ea5e9"
                           strokeWidth={4}
-                          dot={(props: any) => {
-                            const isLast =
-                              props.index === sortedMetrics.length - 1;
-                            return (
-                              <circle
-                                cx={props.cx}
-                                cy={props.cy}
-                                r={isLast ? 6 : 4}
-                                fill={isLast ? "#ef4444" : "#0ea5e9"}
-                                stroke="#fff"
-                                strokeWidth={2}
-                                key={props.index}
-                              />
-                            );
-                          }}
+                          dot={(props: any) => (
+                            <TrendDot 
+                              {...props} 
+                              isLast={props.index === sortedMetrics.length - 1} 
+                              color="#0ea5e9" 
+                              data={parsedMetrics} 
+                              dataKey="bmi" 
+                              threshold={0} 
+                            />
+                          )}
                           activeDot={{
                             r: 8,
                             fill: "#0369a1",
@@ -1512,21 +1531,16 @@ function Dashboard({
                           name="Vòng eo (cm)"
                           stroke="#f59e0b"
                           strokeWidth={4}
-                          dot={(props: any) => {
-                            const isLast =
-                              props.index === sortedMetrics.length - 1;
-                            return (
-                              <circle
-                                cx={props.cx}
-                                cy={props.cy}
-                                r={isLast ? 6 : 4}
-                                fill={isLast ? "#ef4444" : "#f59e0b"}
-                                stroke="#fff"
-                                strokeWidth={2}
-                                key={props.index}
-                              />
-                            );
-                          }}
+                          dot={(props: any) => (
+                            <TrendDot 
+                              {...props} 
+                              isLast={props.index === sortedMetrics.length - 1} 
+                              color="#f59e0b" 
+                              data={parsedMetrics} 
+                              dataKey="waist" 
+                              threshold={0} 
+                            />
+                          )}
                           activeDot={{
                             r: 8,
                             fill: "#b45309",
@@ -1720,6 +1734,7 @@ function Dashboard({
                   </label>
                   <input
                     type="text"
+                    autoComplete="off"
                     value={nickname}
                     onChange={(e) => setNickname(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
@@ -1732,6 +1747,7 @@ function Dashboard({
                     </label>
                     <input
                       type="text"
+                      autoComplete="off"
                       inputMode="decimal"
                       value={targetWeight}
                       onChange={handleDecimalInput(setTargetWeight)}
@@ -1762,6 +1778,7 @@ function Dashboard({
                     </label>
                     <input
                       type="text"
+                      autoComplete="off"
                       value={targetEvent}
                       onChange={(e) => setTargetEvent(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
@@ -1785,6 +1802,7 @@ function Dashboard({
                   </label>
                   <input
                     type="text"
+                    autoComplete="off"
                     value={slogan}
                     onChange={(e) => setSlogan(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
@@ -1877,6 +1895,7 @@ function Dashboard({
                     </label>
                     <input
                       type="text"
+                      autoComplete="off"
                       inputMode="decimal"
                       value={dailyWaist}
                       onChange={handleDecimalInput(setDailyWaist)}
@@ -1889,6 +1908,7 @@ function Dashboard({
                     </label>
                     <input
                       type="text"
+                      autoComplete="off"
                       inputMode="decimal"
                       value={height}
                       onChange={handleDecimalInput(setHeight)}
