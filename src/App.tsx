@@ -45,6 +45,8 @@ import {
   TrendingUp,
   Minus,
   Printer,
+  FileText,
+  ShieldCheck,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { clsx, type ClassValue } from "clsx";
@@ -431,13 +433,16 @@ export default function App() {
           <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/30 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6">
             <Apple className="w-10 h-10 text-indigo-500 dark:text-indigo-400" />
           </div>
-          <div className="flex items-baseline justify-center gap-2 mb-8">
-            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
-              OnlyTrack
-            </h1>
-            <p className="text-indigo-600 font-medium text-lg sm:text-xl">
-              by Dr.Son
-            </p>
+          <div className="flex flex-col items-center justify-center mb-8">
+            <div className="flex items-baseline gap-2">
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
+                OnlyTrack
+              </h1>
+              <p className="text-indigo-600 font-bold uppercase text-lg sm:text-xl transform -skew-x-12">
+                BS.Sơn
+              </p>
+            </div>
+            <p className="text-slate-500 font-medium mt-1">Ứng dụng nhật ký tối giản</p>
           </div>
 
           <div className="space-y-4">
@@ -530,6 +535,10 @@ function Dashboard({
 
   const isProfileComplete = profile?.nickname && profile?.slogan;
   const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(() => {
+    return localStorage.getItem("onlytrack_terms_accepted") !== "true";
+  });
+  const [showWeeklyReport, setShowWeeklyReport] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -568,7 +577,7 @@ function Dashboard({
       const today = now.toISOString().split("T")[0];
 
       if (currentTime >= targetTime && lastNotif !== today) {
-        new Notification("OnlyTrack by Dr.Son", {
+        new Notification("OnlyTrack - BS.Sơn", {
           body: "Chúc bạn một ngày đầy hứng khởi. Hãy bước lên cân vào cùng một thời điểm mỗi ngày nhé!",
           icon: "/vite.svg",
         });
@@ -649,6 +658,224 @@ function Dashboard({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
+
+  const handleExportDoc = () => {
+    try {
+      const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>Báo Cáo Tiến Độ</title>
+      <style>
+        @page WordSection1 { size: 21.0cm 29.7cm; margin: 0.5cm 1.0cm 0.5cm 1.0cm; mso-header-margin: 0.5cm; mso-footer-margin: 0.5cm; mso-paper-source: 0; }
+        div.WordSection1 { page: WordSection1; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.2; color: #334155; margin: 0; padding: 0; }
+        .document-wrapper { border: 2px solid #64748b; padding: 15px; }
+        h1 { text-align: center; color: #1e293b; border-bottom: 2px solid #6366f1; padding-bottom: 6px; margin-bottom: 10px; margin-top: 0; font-size: 18pt; text-transform: uppercase; }
+        h2 { color: #4338ca; margin-top: 12px; margin-bottom: 6px; font-size: 13pt; font-weight: bold; }
+        .info-card { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #6366f1; padding: 8px; margin-bottom: 10px; border-radius: 4px; }
+        .info-card p { margin: 3px 0; font-size: 10.5pt; }
+        .stats-grid { display: table; width: 100%; border-spacing: 8px; margin-left: -8px; margin-top: 5px; }
+        .stat-box { display: table-cell; background: #f1f5f9; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center; width: 25%; }
+        .stat-label { font-size: 9pt; color: #64748b; font-weight: bold; text-transform: uppercase; display: block; margin-bottom: 3px; }
+        .stat-value { font-size: 12pt; color: #0f172a; font-weight: bold; display: block; }
+        .stat-sub { font-size: 8.5pt; color: #475569; display: block; margin-top: 2px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 8px; table-layout: fixed; }
+        th, td { border: 1px solid #cbd5e1; padding: 4px; text-align: center; font-size: 10pt; word-wrap: break-word; }
+        th { background-color: #f8fafc; font-weight: bold; color: #334155; }
+        .note { text-align: left; }
+        .footer { margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 8px; text-align: center; font-size: 8.5pt; color: #94a3b8; font-style: italic; }
+      </style>
+      </head><body><div class="WordSection1 document-wrapper">`;
+      
+      const sortedByDateAsc = [...metrics].sort((a, b) => a.date.localeCompare(b.date));
+      const sortedByDateDesc = [...sortedByDateAsc].reverse();
+      
+      const today = new Date().toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const startDateStr = sortedByDateAsc.length > 0 ? formatToDDMMYY(sortedByDateAsc[0].date) : '-';
+      const endDateStr = sortedByDateDesc.length > 0 ? formatToDDMMYY(sortedByDateDesc[0].date) : '-';
+
+      let content = `<h1>NHẬT KÝ KIỂM SOÁT CÂN NẶNG</h1>`;
+      content += `<p style="text-align: center; color: #475569; font-style: italic; margin-top: -5px; margin-bottom: 20px; font-size: 11pt;">Báo cáo ngày: ${today}<br>Dữ liệu từ ngày ${startDateStr} đến ngày ${endDateStr}</p>`;
+      
+      content += `<h2>THÔNG TIN CÁ NHÂN</h2>`;
+      content += `<div class="info-card">`;
+      content += `<p><strong>Họ tên/Nickname:</strong> ${profile?.nickname || 'Guest'}</p>`;
+      if (profile?.targetEvent || profile?.targetDate) {
+        content += `<p><strong>Sự kiện sắp tới:</strong> ${profile?.targetEvent || 'Ngày trọng đại'} ${profile?.targetDate ? `(Ngày: ${formatToDDMMYY(profile.targetDate)})` : ''}</p>`;
+      }
+      if (profile?.targetWeight) {
+          content += `<p><strong>Cân nặng mục tiêu:</strong> ${profile.targetWeight} kg</p>`;
+      }
+      content += `</div>`;
+      
+      let startMetric = null;
+      let peakMetric = null;
+      let currentMetric = null;
+      let weightChangeStr = '';
+      
+      let trending1m = null;
+      let trending2m = null;
+      let trending4m = null;
+      
+      if (sortedByDateAsc.length > 0) {
+          startMetric = sortedByDateAsc.find(m => m.weight);
+          currentMetric = sortedByDateDesc.find(m => m.weight);
+          
+          let maxWeight = -1;
+          for (const m of sortedByDateAsc) {
+              if (m.weight && m.weight > maxWeight) {
+                  maxWeight = m.weight;
+                  peakMetric = m;
+              }
+          }
+          if (startMetric && currentMetric) {
+               const diff = currentMetric.weight - startMetric.weight;
+               if (diff > 0) {
+                   weightChangeStr = `${diff.toFixed(1)} kg`;
+                   content += `<h2>TỔNG QUAN</h2>`;
+                   content += `<div class="info-card">`;
+                   content += `<p><strong>Dữ liệu đầu:</strong> ${startMetric.weight} kg (${formatToDDMMYY(startMetric.date)})</p>`;
+                   content += `<p><strong>Đỉnh điểm:</strong> ${peakMetric?.weight} kg (${peakMetric ? formatToDDMMYY(peakMetric.date) : ''})</p>`;
+                   content += `<p><strong>Hiện tại:</strong> ${currentMetric.weight} kg (${formatToDDMMYY(currentMetric.date)})</p>`;
+                   content += `<p><strong>Đã tăng:</strong> ${weightChangeStr}</p>`;
+                   content += `</div>`;
+               } else if (diff < 0) {
+                   weightChangeStr = `${Math.abs(diff).toFixed(1)} kg`;
+                   content += `<h2>TỔNG QUAN</h2>`;
+                   content += `<div class="info-card">`;
+                   content += `<p><strong>Dữ liệu đầu:</strong> ${startMetric.weight} kg (${formatToDDMMYY(startMetric.date)})</p>`;
+                   content += `<p><strong>Đỉnh điểm:</strong> ${peakMetric?.weight} kg (${peakMetric ? formatToDDMMYY(peakMetric.date) : ''})</p>`;
+                   content += `<p><strong>Hiện tại:</strong> ${currentMetric.weight} kg (${formatToDDMMYY(currentMetric.date)})</p>`;
+                   content += `<p><strong>Đã giảm:</strong> ${weightChangeStr}</p>`;
+                   content += `</div>`;
+               } else {
+                   content += `<h2>TỔNG QUAN</h2>`;
+                   content += `<div class="info-card">`;
+                   content += `<p><strong>Dữ liệu đầu:</strong> ${startMetric.weight} kg (${formatToDDMMYY(startMetric.date)})</p>`;
+                   content += `<p><strong>Đỉnh điểm:</strong> ${peakMetric?.weight} kg (${peakMetric ? formatToDDMMYY(peakMetric.date) : ''})</p>`;
+                   content += `<p><strong>Hiện tại:</strong> ${currentMetric.weight} kg (${formatToDDMMYY(currentMetric.date)})</p>`;
+                   content += `<p><strong>Thay đổi tổng:</strong> Không đổi</p>`;
+                   content += `</div>`;
+               }
+          }
+
+          const currentDateTime = new Date(currentMetric?.date || new Date()).getTime();
+
+          const getTrend = (months: number) => {
+             const targetDate = new Date(currentDateTime);
+             targetDate.setDate(targetDate.getDate() - months * 30);
+             const targetTime = targetDate.getTime();
+             
+             if (sortedByDateAsc[0] && new Date(sortedByDateAsc[0].date).getTime() > targetTime) {
+                 return null;
+             }
+             
+             let closeMetric = sortedByDateAsc[0];
+             let minDiff = Infinity;
+             for (const m of sortedByDateAsc) {
+                 if (!m.weight) continue;
+                 const diff = Math.abs(new Date(m.date).getTime() - targetTime);
+                 if (diff < minDiff) {
+                     minDiff = diff;
+                     closeMetric = m;
+                 }
+             }
+             if (closeMetric && currentMetric && closeMetric !== currentMetric) {
+                 const diff = currentMetric.weight - closeMetric.weight;
+                 const sign = diff > 0 ? '+' : (diff < 0 ? '-' : '');
+                 return { value: `${sign}${Math.abs(diff).toFixed(1)} kg`, date: formatToDDMMYY(closeMetric.date), diff };
+             }
+             return null; // Not enough change or exactly same timeframe
+          };
+          
+          trending1m = getTrend(1);
+          trending2m = getTrend(2);
+          trending4m = getTrend(4);
+
+          if (trending1m || trending2m || trending4m) {
+              content += `<h2>THỐNG KÊ XU HƯỚNG</h2>`;
+              content += `<div class="stats-grid">`;
+              if (trending1m) {
+                  content += `
+                  <div class="stat-box">
+                      <span class="stat-label">1 Tháng</span>
+                      <span class="stat-value" style="color: ${trending1m.diff > 0 ? '#e11d48' : '#059669'};">${trending1m.value}</span>
+                      <span class="stat-sub">Từ ${trending1m.date}</span>
+                  </div>`;
+              }
+              if (trending2m) {
+                  content += `
+                  <div class="stat-box">
+                      <span class="stat-label">2 Tháng</span>
+                      <span class="stat-value" style="color: ${trending2m.diff > 0 ? '#e11d48' : '#059669'};">${trending2m.value}</span>
+                      <span class="stat-sub">Từ ${trending2m.date}</span>
+                  </div>`;
+              }
+              if (trending4m) {
+                  content += `
+                  <div class="stat-box">
+                      <span class="stat-label">4 Tháng</span>
+                      <span class="stat-value" style="color: ${trending4m.diff > 0 ? '#e11d48' : '#059669'};">${trending4m.value}</span>
+                      <span class="stat-sub">Từ ${trending4m.date}</span>
+                  </div>`;
+              }
+              content += `</div>`;
+          }
+      }
+      
+      content += `<h2>CHI TIẾT LỊCH SỬ CHỈ SỐ</h2>`;
+      content += `<table>
+          <tr>
+              <th style="width: 15%;">Ngày</th>
+              <th style="width: 15%;">Cân nặng (kg)</th>
+              <th style="width: 15%;">Chiều cao (cm)</th>
+              <th style="width: 15%;">BMI</th>
+              <th style="width: 15%;">Vòng eo (cm)</th>
+              <th style="width: 25%;">Ghi chú</th>
+          </tr>`;
+          
+      sortedByDateDesc.forEach(m => {
+          content += `<tr>
+              <td>${formatToDDMMYY(m.date)}</td>
+              <td>${m.weight || '-'}</td>
+              <td>${m.height || '-'}</td>
+              <td>${m.bmi || '-'}</td>
+              <td>${m.waist || '-'}</td>
+              <td class="note">${m.note || '-'}</td>
+          </tr>`;
+      });
+      
+      content += `</table>`;
+      
+      content += `<div class="footer">
+        Xuất từ ứng dụng OnlyTrack của BS Đỗ Tiến Sơn TAHN<br>
+        Dữ liệu do người dùng tự nhập và quản lí tại máy cá nhân
+      </div>`;
+
+      content += `</div></body></html>`;
+
+      const blob = new Blob(['\ufeff', header + content], {
+          type: 'application/msword'
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const removeAccents = (str: string) => {
+          return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+      };
+      const safeNickname = (profile?.nickname || 'Guest').split(' ').map(removeAccents).join(' ');
+      const now = new Date();
+      const backupDate = now.toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '');
+      
+      link.download = `${safeNickname} - KSCN Report - ${backupDate} by OnlyTrack DrSon TAHN.doc`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      alert('Có lỗi khi xuất dữ liệu.');
+    }
+  };
 
   const handleExportData = () => {
     try {
@@ -814,8 +1041,126 @@ function Dashboard({
     });
   }, [sortedMetrics, profile?.height]);
 
+  const weeklyReportData = useMemo(() => {
+    if (parsedMetrics.length === 0) return null;
+    
+    const now = new Date();
+    
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      last7Days.push(`${y}-${m}-${day}`);
+    }
+
+    const prev7Days = [];
+    for (let i = 13; i >= 7; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      prev7Days.push(`${y}-${m}-${day}`);
+    }
+
+    const metricsThisWeek = parsedMetrics.filter(m => last7Days.includes(m.date));
+    const metricsLastWeek = parsedMetrics.filter(m => prev7Days.includes(m.date));
+
+    const thisWeekWeight = metricsThisWeek.filter(m => m.weight).map(m => m.weight!);
+    const lastWeekWeight = metricsLastWeek.filter(m => m.weight).map(m => m.weight!);
+    
+    const avgThisWeek = thisWeekWeight.length > 0 ? (thisWeekWeight.reduce((a,b)=>a+b,0)/thisWeekWeight.length) : null;
+    const avgLastWeek = lastWeekWeight.length > 0 ? (lastWeekWeight.reduce((a,b)=>a+b,0)/lastWeekWeight.length) : null;
+    
+    let changeStr = "";
+    let isLoss = false;
+    if (avgThisWeek !== null && avgLastWeek !== null) {
+      const diff = avgThisWeek - avgLastWeek;
+      isLoss = diff <= 0;
+      changeStr = Math.abs(diff).toFixed(1) + " kg";
+    }
+
+    const minWeight = thisWeekWeight.length > 0 ? Math.min(...thisWeekWeight) : null;
+    const maxWeight = thisWeekWeight.length > 0 ? Math.max(...thisWeekWeight) : null;
+    const inputDaysCount = metricsThisWeek.length;
+    
+    return {
+      last7Days,
+      metricsThisWeek,
+      avgThisWeek,
+      avgLastWeek,
+      changeStr,
+      isLoss,
+      minWeight,
+      maxWeight,
+      inputDaysCount
+    };
+  }, [parsedMetrics]);
+
   const latestMetric = parsedMetrics[parsedMetrics.length - 1];
   const hasTodayMetric = metrics.some(m => m.date === getLocalDateString());
+
+  const streakData = useMemo(() => {
+    if (metrics.length === 0) return { count: 0 };
+    const uniqueDates = [...new Set(metrics.filter(m => m.weight).map(m => m.date))].sort((a, b) => b.localeCompare(a));
+    if (uniqueDates.length === 0) return { count: 0 };
+
+    const toDateStr = (d: Date) => {
+       const y = d.getFullYear();
+       const m = String(d.getMonth() + 1).padStart(2, '0');
+       const dateDay = String(d.getDate()).padStart(2, '0');
+       return `${y}-${m}-${dateDay}`;
+    };
+
+    let count = 0;
+    let expectedDate = new Date(); 
+    
+    const checkToday = toDateStr(expectedDate);
+    expectedDate.setDate(expectedDate.getDate() - 1);
+    const checkYesterday = toDateStr(expectedDate);
+    
+    // reset expectedDate to today for the loop setup
+    expectedDate = new Date();
+    
+    if (uniqueDates[0] === checkToday) {
+       count = 1;
+    } else if (uniqueDates[0] === checkYesterday) {
+       count = 1;
+       expectedDate.setDate(expectedDate.getDate() - 1); // shift back so first loop iteration checks day before yesterday
+    } else {
+       return { count: 0 };
+    }
+    
+    for (let i = 1; i < uniqueDates.length; i++) {
+        expectedDate.setDate(expectedDate.getDate() - 1);
+        if (uniqueDates[i] === toDateStr(expectedDate)) {
+            count++;
+        } else {
+            break;
+        }
+    }
+    return { count };
+  }, [metrics]);
+
+  const badges = useMemo(() => {
+    if (parsedMetrics.length < 2) return [];
+    const firstM = parsedMetrics.find(m => m.weight);
+    const lastM = [...parsedMetrics].reverse().find(m => m.weight);
+    if (!firstM || !lastM || !firstM.weight || !lastM.weight) return [];
+    
+    const diff = firstM.weight - lastM.weight;
+    if (diff < 2) return [];
+    
+    const res = [];
+    if (diff >= 2 && diff < 5) res.push("🥉 Giảm 2kg");
+    if (diff >= 5 && diff < 10) res.push("🥈 Giảm 5kg");
+    if (diff >= 10 && diff < 20) res.push("🥇 Giảm 10kg");
+    if (diff >= 20) res.push("👑 Giảm 20kg+");
+    return res;
+  }, [parsedMetrics]);
 
   const chartDomainX = useMemo(() => {
     if (parsedMetrics.length === 0) {
@@ -1006,22 +1351,26 @@ function Dashboard({
             <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center">
               <Apple className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
             </div>
-            <div className="flex items-baseline gap-1.5">
-              <h1 className="font-black text-xl sm:text-2xl text-slate-900 dark:text-white tracking-tighter leading-tight">
+            <div className="flex items-baseline gap-1.5 flex-wrap sm:flex-nowrap">
+              <h1 className="font-black text-xl sm:text-2xl text-slate-900 dark:text-white tracking-tighter leading-tight mt-1 sm:mt-0">
                 OnlyTrack
               </h1>
-              <span className="text-[10px] sm:text-xs font-bold text-indigo-500/80 dark:text-indigo-400/80 uppercase tracking-widest mt-1">
-                by Dr.Son
+              <span className="text-[11px] sm:text-xs font-black text-indigo-500/80 dark:text-indigo-400/80 uppercase tracking-wide mt-1 transform -skew-x-12">
+                BS.Sơn
+              </span>
+              <div className="w-full sm:w-auto h-0 sm:h-auto sm:border-l sm:border-slate-300 dark:sm:border-slate-600 sm:mx-2 sm:pl-2"></div>
+              <span className="text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 italic mt-0 sm:mt-1 hidden sm:inline-block">
+                Ứng dụng nhật ký tối giản
               </span>
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 print:hidden">
             <button
-              onClick={() => window.print()}
+              onClick={handleExportDoc}
               className="w-10 h-10 rounded-full flex items-center justify-center bg-transparent text-slate-400 hover:bg-black/5 hover:text-slate-600 dark:hover:bg-white/5 dark:hover:text-slate-200 transition-colors"
-              title="Xuất báo cáo (PDF)"
+              title="Xuất báo cáo (DOC)"
             >
-              <Printer className="w-5 h-5" />
+              <FileText className="w-5 h-5" />
             </button>
             <button
               onClick={() => setShowStats(!showStats)}
@@ -1539,14 +1888,26 @@ function Dashboard({
                 <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none transition-transform duration-700 group-hover:scale-150"></div>
                 <div className="absolute bottom-0 left-0 -ml-8 -mb-8 w-24 h-24 bg-sky-500/5 rounded-full blur-2xl pointer-events-none transition-transform duration-700 group-hover:scale-150"></div>
 
-                <div className="flex items-center gap-3 relative z-10 mb-4">
-                  <div className="p-2.5 bg-sky-50 dark:bg-sky-900/30 text-sky-500 rounded-xl shadow-sm border border-sky-100 dark:border-sky-800">
-                    <Target className="w-5 h-5" />
+                <div className="flex items-center justify-between relative z-10 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-sky-50 dark:bg-sky-900/30 text-sky-500 rounded-xl shadow-sm border border-sky-100 dark:border-sky-800">
+                      <Target className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-black text-lg text-slate-800 dark:text-slate-100 tracking-tight">Thống kê xu hướng</h3>
+                      <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">Tiến độ cá nhân</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-black text-lg text-slate-800 dark:text-slate-100 tracking-tight">Thống kê xu hướng</h3>
-                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">Tiến độ cá nhân</p>
-                  </div>
+                  {weeklyReportData && weeklyReportData.inputDaysCount > 0 && (
+                    <button 
+                      onClick={() => setShowWeeklyReport(true)}
+                      className="px-3 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-bold text-xs rounded-xl shadow-sm border border-indigo-100/50 dark:border-indigo-800/30 transition-all hover:bg-indigo-100 dark:hover:bg-indigo-900/50 flex items-center gap-1.5 active:scale-95"
+                    >
+                      <Calendar className="w-4 h-4" /> 
+                      <span className="hidden sm:inline">Báo cáo tuần</span>
+                      <span className="sm:hidden">Tuần</span>
+                    </button>
+                  )}
                 </div>
 
                 {availableMonths >= 2 && (
@@ -1662,9 +2023,34 @@ function Dashboard({
                   <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
                     <Activity className="w-5 h-5" />
                   </div>
-                  <h2 className="text-xl font-black text-slate-900 dark:text-white">
-                    Hành trình của tôi...
-                  </h2>
+                  <div className="flex flex-col">
+                    <h2 className="text-xl font-black text-slate-900 dark:text-white">
+                      Hành trình của tôi...
+                    </h2>
+                    {(streakData.count > 0 || badges.length > 0) && (
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {streakData.count > 0 && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 rounded-md border border-orange-200 dark:border-orange-800">
+                            🔥 {streakData.count} ngày liên tiếp
+                          </span>
+                        )}
+                        {badges.slice(0, 2).map((b, idx) => (
+                           <span key={idx} className="text-[10px] font-bold px-1.5 py-0.5 bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 rounded-md border border-sky-200 dark:border-sky-800">
+                             {b}
+                           </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-baseline gap-1.5 opacity-60 mt-1.5 pointer-events-none">
+                      <span className="text-[11px] text-slate-500 font-medium italic">Nhật kí tại...</span>
+                      <span className="font-black text-sm text-slate-900 dark:text-white tracking-tighter leading-tight">
+                        OnlyTrack
+                      </span>
+                      <span className="text-[11px] font-black text-indigo-600/90 dark:text-indigo-400/90 uppercase tracking-wide transform -skew-x-12">
+                        BS.Sơn
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="inline-flex rounded-xl p-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner print:hidden">
@@ -1705,7 +2091,7 @@ function Dashboard({
               </div>
 
               {sortedMetrics.length > 0 ? (
-                <div className="w-full mt-4">
+                <div className="w-full mt-4 relative">
                   <ResponsiveContainer width="100%" height={300}>
                     <LineChart
                       data={visibleMetrics}
@@ -2105,11 +2491,13 @@ function Dashboard({
 
       <footer className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center border-t border-slate-200 mt-6">
         <p className="text-xs text-slate-400 font-medium max-w-2xl mx-auto leading-relaxed">
-          Ứng dụng là sản phẩm hỗ trợ điều trị của BS. Đỗ Tiến Sơn
+          Ứng dụng miễn phí hoàn toàn, tham gia hỗ trợ theo dõi
           <br />
-          Khoa Nhi - Bệnh viện Đa khoa Tâm Anh
+          <span className="font-bold text-slate-500">DỮ LIỆU CHỈ LƯU TẠI MÁY NGƯỜI DÙNG</span>
           <br />
-          dotienson.com/apps
+          Nhóm Kiểm soát cân nặng trẻ em
+          <br />
+          <a href="https://tamanhhospital.vn/chuyen-gia/do-tien-son/" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-500 transition-colors">Đặt lịch khám với BS. Đỗ Tiến Sơn</a>
         </p>
       </footer>
 
@@ -2289,6 +2677,149 @@ function Dashboard({
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showWeeklyReport && weeklyReportData && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            onClick={() => setShowWeeklyReport(false)}
+          ></div>
+          <div className="relative bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between p-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+              <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-lg">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                Báo cáo 7 ngày qua
+              </h2>
+              <button
+                onClick={() => setShowWeeklyReport(false)}
+                className="w-7 h-7 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-lg line-height-1"
+              >
+                &times;
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-5">
+              <div className="flex flex-col items-center justify-center text-center">
+                <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1">
+                  Đã ghi chép
+                </p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter">
+                    {weeklyReportData.inputDaysCount}
+                  </span>
+                  <span className="text-lg font-bold text-slate-500 dark:text-slate-400">
+                    / 7 ngày
+                  </span>
+                </div>
+                {weeklyReportData.inputDaysCount >= 5 && (
+                  <p className="text-xs font-bold text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400 py-1 px-2 rounded-md mt-2">
+                    🌟 Phong độ xuất sắc!
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/80 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-1.5 uppercase">
+                  So với 7 ngày trước đó
+                </p>
+                
+                {weeklyReportData.avgThisWeek !== null && weeklyReportData.avgLastWeek !== null ? (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className={cn(
+                        "text-2xl font-black tracking-tighter",
+                        weeklyReportData.isLoss ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                      )}>
+                        {weeklyReportData.isLoss ? "↓ " : "↑ "}{weeklyReportData.changeStr}
+                      </span>
+                      <p className="text-xs text-slate-500 font-medium mt-0.5">
+                        {weeklyReportData.isLoss ? "Đã giảm được" : "Tăng nhẹ"}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm font-medium text-slate-500 italic">Chưa đủ dữ liệu tuần trước để so sánh.</p>
+                )}
+              </div>
+
+              {weeklyReportData.metricsThisWeek.length > 0 && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-sky-50 dark:bg-sky-900/20 rounded-2xl p-3 text-center border border-sky-100 dark:border-sky-800/30">
+                    <p className="text-[10px] font-bold text-sky-600/70 dark:text-sky-400/70 uppercase tracking-widest mb-1">Cân nặng Min</p>
+                    <p className="text-lg font-black text-sky-700 dark:text-sky-300">{weeklyReportData.minWeight} <span className="text-[10px]">kg</span></p>
+                  </div>
+                  <div className="bg-rose-50 dark:bg-rose-900/20 rounded-2xl p-3 text-center border border-rose-100 dark:border-rose-800/30">
+                    <p className="text-[10px] font-bold text-rose-600/70 dark:text-rose-400/70 uppercase tracking-widest mb-1">Cân nặng Max</p>
+                    <p className="text-lg font-black text-rose-700 dark:text-rose-300">{weeklyReportData.maxWeight} <span className="text-[10px]">kg</span></p>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="p-4 pt-0">
+               <button
+                 onClick={() => setShowWeeklyReport(false)}
+                 className="w-full py-3 bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-md active:scale-95"
+               >
+                 Đóng
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTermsModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"></div>
+          <div className="relative bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]">
+            <div className="flex items-center gap-3 p-5 pb-4 border-b border-slate-100 dark:border-slate-700 bg-indigo-50/50 dark:bg-slate-800/80">
+              <div className="p-2.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <h2 className="text-xl font-black text-slate-900 dark:text-white leading-tight">
+                Điều khoản sử dụng
+              </h2>
+            </div>
+            
+            <div className="p-5 overflow-y-auto hidden-scrollbar text-sm text-slate-600 dark:text-slate-300 space-y-4 leading-relaxed font-medium">
+              <p>
+                Chào mừng bạn đến với <strong className="text-slate-900 dark:text-white">OnlyTrack</strong> - Ứng dụng nhật ký tối giản dành cho Kiểm soát cân nặng, phát triển bởi nhóm của <strong className="text-slate-900 dark:text-white">BS. Đỗ Tiến Sơn</strong>.
+              </p>
+              
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/30 p-4 rounded-xl text-amber-800 dark:text-amber-300">
+                <p className="font-bold mb-1">🔑 Quyền riêng tư & Bảo mật dữ liệu</p>
+                <p>Toàn bộ dữ liệu bạn nhập vào ứng dụng (cân nặng, chiều cao, thông tin cá nhân...) <strong>CHỈ ĐƯỢC LƯU TRỮ TẠI THIẾT BỊ BẠN ĐANG SỬ DỤNG</strong> (trong bộ nhớ trình duyệt). Chúng tôi không có máy chủ cơ sở dữ liệu và <strong>TUYỆT ĐỐI KHÔNG</strong> thu thập, đồng bộ hay chia sẻ bất kỳ thông tin nào của bạn cho bên thứ ba.</p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="font-bold text-slate-900 dark:text-white">📌 Xin lưu ý:</p>
+                <ul className="list-disc pl-5 space-y-1.5">
+                  <li>Nếu bạn xoá lịch sử trình duyệt, sử dụng chế độ Ẩn danh (Incognito), hoặc đổi thiết bị, dữ liệu sẽ không được giữ lại. Tính năng "Sao lưu" và "Khôi phục" trên app dùng để chuyển dữ liệu thủ công giữa các thiết bị.</li>
+                  <li>Sản phẩm là công cụ công nghệ hỗ trợ theo dõi sức khoẻ miễn phí, không mang mục đích y khoa, không thay thế cho việc chẩn đoán hay điều trị y tế chuyên nghiệp.</li>
+                </ul>
+              </div>
+
+              <p className="italic text-slate-500">
+                Việc nhấn Đồng ý đồng nghĩa với việc bạn đã đọc, hiểu rõ và chấp nhận các điều khoản về bảo mật và lưu trữ dữ liệu của ứng dụng.
+              </p>
+            </div>
+            
+            <div className="p-5 pt-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+              <button
+                onClick={() => {
+                  localStorage.setItem("onlytrack_terms_accepted", "true");
+                  setShowTermsModal(false);
+                }}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0 shadow-md text-base"
+              >
+                Tôi đã đọc và Đồng ý
+              </button>
             </div>
           </div>
         </div>
