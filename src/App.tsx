@@ -756,10 +756,34 @@ function Dashboard({
   const hasTodayMetric = metrics.some(m => m.date === new Date().toISOString().split("T")[0]);
 
   const chartDomainX = useMemo(() => {
-    const now = Date.now();
-    const sixMonths = 6 * 30 * 24 * 60 * 60 * 1000;
-    return [now - sixMonths, now + sixMonths];
-  }, []);
+    if (parsedMetrics.length === 0) {
+      const now = Date.now();
+      const sixMonths = 6 * 30 * 24 * 60 * 60 * 1000;
+      return [now - sixMonths, now + sixMonths];
+    }
+    if (parsedMetrics.length === 1) {
+      const point = parsedMetrics[0].timestampForChart;
+      const oneMonth = 30 * 24 * 60 * 60 * 1000;
+      return [point - oneMonth, point + oneMonth];
+    }
+    return ["dataMin", "dataMax"];
+  }, [parsedMetrics]);
+
+  const defaultBrushStartIndex = useMemo(() => {
+    if (parsedMetrics.length <= 15) return 0;
+    
+    const lastPoint = parsedMetrics[parsedMetrics.length - 1].timestampForChart;
+    const targetTime = lastPoint - 30 * 24 * 60 * 60 * 1000; // 30 days ago
+    
+    let idx = parsedMetrics.findIndex(m => m.timestampForChart >= targetTime);
+    if (idx === -1) idx = parsedMetrics.length - 15;
+    
+    // Ensure we show at least 5 points to have a good graph, but don't overflow
+    if (parsedMetrics.length - idx < 5) {
+      idx = Math.max(0, parsedMetrics.length - 15);
+    }
+    return idx;
+  }, [parsedMetrics]);
 
   let whtr = null;
   const currentHeight = latestMetric?.height || profile?.height;
@@ -1575,6 +1599,26 @@ function Dashboard({
                           }}
                           animationDuration={1500}
                         />
+                      )}
+                      {parsedMetrics.length > 5 && (
+                        <Brush
+                          dataKey="timestampForChart"
+                          height={40}
+                          stroke="#64748b"
+                          fill="#f8fafc"
+                          startIndex={defaultBrushStartIndex}
+                          tickFormatter={(val) => {
+                            if (!val) return "";
+                            const d = new Date(val);
+                            const day = d.getDate().toString().padStart(2, "0");
+                            const month = (d.getMonth() + 1).toString().padStart(2, "0");
+                            return `${day}/${month}`;
+                          }}
+                        >
+                          <LineChart>
+                            <Line type="monotone" dataKey={chartType} stroke="#94a3b8" strokeWidth={1} dot={false} />
+                          </LineChart>
+                        </Brush>
                       )}
                     </LineChart>
                   </ResponsiveContainer>
