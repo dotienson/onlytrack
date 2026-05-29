@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, signIn, signOut, testConnection } from "./firebase";
 import { useMetrics, Metric, UserProfile } from "./hooks/useMetrics";
@@ -58,10 +58,11 @@ function TrendDot({ cx, cy, isLast, color, index, data, dataKey, threshold = 0 }
   }
   if (!isLast) {
     let shouldShow = true;
-    if (data && data.length > 12) {
+    if (data && data.length > 12 && data[0] && data[data.length - 1]) {
       const minTimeDiff = (data[data.length - 1].timestampForChart - data[0].timestampForChart) / 12;
       let lastShownIndex = 0;
       for (let i = 1; i <= index; i++) {
+        if (!data[i] || !data[lastShownIndex]) continue;
         const timeDiff = data[i].timestampForChart - data[lastShownIndex].timestampForChart;
         if (timeDiff >= minTimeDiff) {
           lastShownIndex = i;
