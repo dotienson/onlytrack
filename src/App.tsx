@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { clsx, type ClassValue } from "clsx";
+import * as Slider from "@radix-ui/react-slider";
 import { twMerge } from "tailwind-merge";
 
 function cn(...inputs: ClassValue[]) {
@@ -461,21 +462,7 @@ function Dashboard({
     "weight",
   );
 
-  const [brushRangeState, setBrushRangeState] = useState<{startIndex?: number; endIndex?: number}>({});
-  const brushRangeRef = useRef(brushRangeState);
-  const setBrushRange = (newRange: {startIndex?: number; endIndex?: number}) => {
-    brushRangeRef.current = newRange;
-    setBrushRangeState(newRange);
-  };
-  const brushRange = brushRangeState;
-
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.matchMedia('(max-width: 639px)').matches);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
+  const [brushRange, setBrushRange] = useState<{startIndex?: number; endIndex?: number}>({});
 
   const [showStats, setShowStats] = useState(false);
 
@@ -771,6 +758,20 @@ function Dashboard({
   const latestMetric = parsedMetrics[parsedMetrics.length - 1];
   const hasTodayMetric = metrics.some(m => m.date === new Date().toISOString().split("T")[0]);
 
+  const chartDomainX = useMemo(() => {
+    if (parsedMetrics.length === 0) {
+      const now = Date.now();
+      const sixMonths = 6 * 30 * 24 * 60 * 60 * 1000;
+      return [now - sixMonths, now + sixMonths];
+    }
+    if (parsedMetrics.length === 1) {
+      const point = parsedMetrics[0].timestampForChart;
+      const oneMonth = 30 * 24 * 60 * 60 * 1000;
+      return [point - oneMonth, point + oneMonth];
+    }
+    return ["dataMin", "dataMax"];
+  }, [parsedMetrics]);
+
   const defaultBrushStartIndex = useMemo(() => {
     if (parsedMetrics.length <= 15) return 0;
     
@@ -787,171 +788,6 @@ function Dashboard({
     return idx;
   }, [parsedMetrics]);
 
-  const displayMetrics = useMemo(() => {
-    const start = brushRange.startIndex ?? defaultBrushStartIndex;
-    const end = (brushRange.endIndex !== undefined) ? brushRange.endIndex : (parsedMetrics.length - 1);
-    const visibleCount = end - start + 1;
-
-    // We do decimation only if visible points are too dense to look good.
-    if (visibleCount > 30) {
-      const visibleStart = parsedMetrics[start];
-      const visibleEnd = parsedMetrics[end];
-      if (!visibleStart || !visibleEnd) return parsedMetrics;
-
-      const timeRange = visibleEnd.timestampForChart - visibleStart.timestampForChart;
-      const minGap = timeRange / 30; // Max ~30 visual data points 
-
-      let lastTime = 0;
-      return parsedMetrics.map((m, i) => {
-         // Keep ends and current brush frame boundary 
-         if (i === 0 || i === parsedMetrics.length - 1 || i === start || i === end) {
-            lastTime = m.timestampForChart;
-            return m;
-         }
-
-         if (m.timestampForChart - lastTime >= minGap) {
-            lastTime = m.timestampForChart;
-            return m;
-         }
-
-         // Drop point by nullifying charted values
-         return { ...m, weight: null, bmi: null, waist: null };
-      });
-    }
-
-    return parsedMetrics;
-  }, [parsedMetrics, brushRange, defaultBrushStartIndex]);
-
-  const chartWrapperRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = chartWrapperRef.current;
-    if (!el || !isMobile) return;
-
-    let isPinching = false;
-    let isPanning = false;
-    let startDist = 0;
-    let startX = 0;
-    let startY = 0;
-    let startRange = { start: 0, end: 0 };
-
-    const onTouchStart = (e: TouchEvent) => {
-      const currentStart = brushRangeRef.current.startIndex ?? defaultBrushStartIndex;
-      const currentEnd = brushRangeRef.current.endIndex ?? (parsedMetrics.length - 1);
-
-      if (e.touches.length === 2) {
-        isPinching = true;
-        isPanning = false;
-        startDist = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        startRange = { start: currentStart, end: currentEnd };
-        if (e.cancelable) e.preventDefault();
-      } else if (e.touches.length === 1) {
-        isPanning = true;
-        isPinching = false;
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-        startRange = { start: currentStart, end: currentEnd };
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (parsedMetrics.length <= 1) return;
-
-      if (isPinching && e.touches.length === 2) {
-        if (e.cancelable) e.preventDefault();
-        const dist = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        const scale = startDist / dist;
-        
-        const rangeLen = startRange.end - startRange.start;
-        const newRangeLen = rangeLen * scale;
-        
-        const center = startRange.start + rangeLen / 2;
-        let newStart = Math.round(center - newRangeLen / 2);
-        let newEnd = Math.round(center + newRangeLen / 2);
-        
-        if (newEnd - newStart < 5) {
-          newStart = Math.floor(center - 2.5);
-          newEnd = Math.ceil(center + 2.5);
-        }
-        
-        if (newStart < 0) newStart = 0;
-        if (newEnd > parsedMetrics.length - 1) newEnd = parsedMetrics.length - 1;
-        
-        setBrushRange({ startIndex: newStart, endIndex: newEnd });
-      } else if (isPanning && e.touches.length === 1) {
-        const deltaX = e.touches[0].clientX - startX;
-        const deltaY = e.touches[0].clientY - startY;
-        
-        // If user is mostly scrolling vertically, abort pan
-        if (Math.abs(deltaY) > Math.abs(deltaX) * 1.5) {
-          isPanning = false;
-          return;
-        }
-
-        if (Math.abs(deltaX) > 10 && e.cancelable) {
-           e.preventDefault();
-        }
-        
-        const visibleRange = startRange.end - startRange.start;
-        const pixelsPerItem = el.clientWidth / (visibleRange || 1);
-        const deltaIndex = Math.round(-deltaX / (pixelsPerItem || 10));
-        
-        let newStart = startRange.start + deltaIndex;
-        let newEnd = startRange.end + deltaIndex;
-        
-        const rangeLen = startRange.end - startRange.start;
-        
-        if (newStart < 0) {
-          newStart = 0;
-          newEnd = rangeLen;
-        }
-        if (newEnd > parsedMetrics.length - 1) {
-          newEnd = parsedMetrics.length - 1;
-          newStart = newEnd - rangeLen;
-        }
-        
-        setBrushRange({ startIndex: newStart, endIndex: newEnd });
-      }
-    };
-
-    const onTouchEnd = () => {
-      isPinching = false;
-      isPanning = false;
-    };
-
-    el.addEventListener('touchstart', onTouchStart, { passive: false });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd);
-    el.addEventListener('touchcancel', onTouchEnd);
-
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('touchcancel', onTouchEnd);
-    };
-  }, [parsedMetrics.length, defaultBrushStartIndex, isMobile]);
-
-  const chartDomainX = useMemo(() => {
-    if (parsedMetrics.length === 0) {
-      const now = Date.now();
-      const sixMonths = 6 * 30 * 24 * 60 * 60 * 1000;
-      return [now - sixMonths, now + sixMonths];
-    }
-    if (parsedMetrics.length === 1) {
-      const point = parsedMetrics[0].timestampForChart;
-      const oneMonth = 30 * 24 * 60 * 60 * 1000;
-      return [point - oneMonth, point + oneMonth];
-    }
-    return ["dataMin", "dataMax"];
-  }, [parsedMetrics]);
-
   let whtr = null;
   const currentHeight = latestMetric?.height || profile?.height;
   if (latestMetric?.waist && currentHeight) {
@@ -963,14 +799,18 @@ function Dashboard({
     profile?.nickname ||
     (isGuest ? "Khách" : user?.displayName?.split(" ")[0] || "Bạn");
 
-  const yAxisConfig = useMemo(() => {
-    let visibleMetrics = parsedMetrics;
+  const visibleMetrics = useMemo(() => {
     if (parsedMetrics.length > 5) {
-      const start = brushRange.startIndex ?? defaultBrushStartIndex;
-      const end = brushRange.endIndex ?? (parsedMetrics.length - 1);
-      visibleMetrics = parsedMetrics.slice(start, end + 1);
+      let start = brushRange.startIndex ?? defaultBrushStartIndex;
+      let end = brushRange.endIndex ?? (parsedMetrics.length - 1);
+      start = Math.max(0, Math.min(start, parsedMetrics.length - 1));
+      end = Math.max(start, Math.min(end, parsedMetrics.length - 1));
+      return parsedMetrics.slice(start, end + 1);
     }
+    return parsedMetrics;
+  }, [parsedMetrics, brushRange, defaultBrushStartIndex]);
 
+  const yAxisConfig = useMemo(() => {
     if (chartType === "weight") {
       if (visibleMetrics.length > 0) {
         const weights = visibleMetrics.map(m => m.weight);
@@ -1031,7 +871,7 @@ function Dashboard({
       };
     }
     return { domain: ["auto", "auto"], ticks: undefined };
-  }, [chartType, parsedMetrics, brushRange, defaultBrushStartIndex]);
+  }, [chartType, visibleMetrics]);
 
   const bentoCard =
     "bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 transition-all hover:shadow-md";
@@ -1618,10 +1458,10 @@ function Dashboard({
               </div>
 
               {sortedMetrics.length > 0 ? (
-                <div className="w-full mt-4" ref={chartWrapperRef}>
+                <div className="w-full mt-4">
                   <ResponsiveContainer width="100%" height={300}>
                     <LineChart
-                      data={displayMetrics}
+                      data={visibleMetrics}
                       margin={{ top: 10, right: 30, bottom: 20, left: 10 }}
                     >
                       <CartesianGrid
@@ -1736,13 +1576,12 @@ function Dashboard({
                           name="Cân nặng (kg)"
                           stroke="#4f46e5"
                           strokeWidth={4}
-                          connectNulls={true}
                           dot={(props: any) => (
                             <TrendDot 
                               {...props} 
-                              isLast={props.index === sortedMetrics.length - 1} 
+                              isLast={props.index === visibleMetrics.length - 1} 
                               color="#4f46e5" 
-                              data={parsedMetrics} 
+                              data={visibleMetrics} 
                               dataKey="weight" 
                               threshold={0.5} 
                             />
@@ -1763,13 +1602,12 @@ function Dashboard({
                           name="Chỉ số BMI"
                           stroke="#0ea5e9"
                           strokeWidth={4}
-                          connectNulls={true}
                           dot={(props: any) => (
                             <TrendDot 
                               {...props} 
-                              isLast={props.index === sortedMetrics.length - 1} 
+                              isLast={props.index === visibleMetrics.length - 1} 
                               color="#0ea5e9" 
-                              data={parsedMetrics} 
+                              data={visibleMetrics} 
                               dataKey="bmi" 
                               threshold={0} 
                             />
@@ -1790,13 +1628,12 @@ function Dashboard({
                           name="Vòng eo (cm)"
                           stroke="#f59e0b"
                           strokeWidth={4}
-                          connectNulls={true}
                           dot={(props: any) => (
                             <TrendDot 
                               {...props} 
-                              isLast={props.index === sortedMetrics.length - 1} 
+                              isLast={props.index === visibleMetrics.length - 1} 
                               color="#f59e0b" 
-                              data={parsedMetrics} 
+                              data={visibleMetrics} 
                               dataKey="waist" 
                               threshold={0} 
                             />
@@ -1810,33 +1647,46 @@ function Dashboard({
                           animationDuration={1500}
                         />
                       )}
-                      {parsedMetrics.length > 5 && !isMobile && (
-                        <Brush
-                          dataKey="timestampForChart"
-                          height={40}
-                          stroke="#64748b"
-                          fill="#f8fafc"
-                          startIndex={defaultBrushStartIndex}
-                          onChange={(newRange) => {
-                            if (newRange.startIndex !== undefined && newRange.endIndex !== undefined) {
-                              setBrushRange({ startIndex: newRange.startIndex, endIndex: newRange.endIndex });
-                            }
-                          }}
-                          tickFormatter={(val) => {
-                            if (!val) return "";
-                            const d = new Date(val);
-                            const day = d.getDate().toString().padStart(2, "0");
-                            const month = (d.getMonth() + 1).toString().padStart(2, "0");
-                            return `${day}/${month}`;
-                          }}
-                        >
-                          <LineChart>
-                            <Line type="monotone" dataKey={chartType} stroke="#94a3b8" strokeWidth={1} dot={false} />
-                          </LineChart>
-                        </Brush>
-                      )}
                     </LineChart>
                   </ResponsiveContainer>
+                  {parsedMetrics.length > 5 && (
+                    <div className="px-10 mt-6 mb-2">
+                       <Slider.Root
+                        className="relative flex items-center select-none touch-none w-full h-5"
+                        value={[
+                          brushRange.startIndex ?? defaultBrushStartIndex,
+                          brushRange.endIndex ?? parsedMetrics.length - 1
+                        ]}
+                        max={parsedMetrics.length - 1}
+                        min={0}
+                        step={1}
+                        minStepsBetweenThumbs={1}
+                        onValueChange={(val) => {
+                          setBrushRange({ startIndex: val[0], endIndex: val[1] });
+                        }}
+                      >
+                        <Slider.Track className="bg-slate-200 dark:bg-slate-700 relative grow rounded-full h-1">
+                          <Slider.Range className="absolute bg-slate-400 dark:bg-slate-500 rounded-full h-full" />
+                        </Slider.Track>
+                        <Slider.Thumb
+                          className="block w-4 h-4 bg-rose-500 shadow-md rounded-full focus:outline-none focus:ring-4 focus:ring-rose-500/20 transition-shadow"
+                          aria-label="Start point"
+                        />
+                        <Slider.Thumb
+                          className="block w-4 h-4 bg-rose-500 shadow-md rounded-full focus:outline-none focus:ring-4 focus:ring-rose-500/20 transition-shadow"
+                          aria-label="End point"
+                        />
+                      </Slider.Root>
+                      <div className="flex justify-between text-xs font-medium text-slate-400 mt-2">
+                        <span>
+                          {new Date(parsedMetrics[Math.max(0, Math.min(brushRange.startIndex ?? defaultBrushStartIndex, parsedMetrics.length - 1))].timestampForChart).toLocaleDateString("vi-VN", {day: "2-digit", month: "2-digit"})}
+                        </span>
+                        <span>
+                           {new Date(parsedMetrics[Math.max(0, Math.min(brushRange.endIndex ?? parsedMetrics.length - 1, parsedMetrics.length - 1))].timestampForChart).toLocaleDateString("vi-VN", {day: "2-digit", month: "2-digit"})}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                   {chartType === "weight" && sortedMetrics.length > 0 && (
                     <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 sm:flex sm:flex-wrap sm:justify-center text-sm sm:text-base">
                       <div className="flex flex-col items-center justify-center w-full sm:w-32 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner">
