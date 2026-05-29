@@ -39,6 +39,9 @@ import {
   Upload,
   ChevronLeft,
   ChevronRight,
+  TrendingDown,
+  TrendingUp,
+  Minus,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { clsx, type ClassValue } from "clsx";
@@ -49,14 +52,26 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-function TrendDot({ cx, cy, isLast, color, index, data, dataKey, threshold = 0, step = 1 }: any) {
+function TrendDot({ cx, cy, isLast, color, index, data, dataKey, threshold = 0 }: any) {
   if (typeof cx !== "number" || typeof cy !== "number" || isNaN(cx) || isNaN(cy)) {
     return null;
   }
   if (!isLast) {
-    if (step > 1 && index !== 0 && index % step !== 0) {
-      return null;
+    let shouldShow = true;
+    if (data && data.length > 12) {
+      const minTimeDiff = (data[data.length - 1].timestampForChart - data[0].timestampForChart) / 12;
+      let lastShownIndex = 0;
+      for (let i = 1; i <= index; i++) {
+        const timeDiff = data[i].timestampForChart - data[lastShownIndex].timestampForChart;
+        if (timeDiff >= minTimeDiff) {
+          lastShownIndex = i;
+        }
+      }
+      if (lastShownIndex !== index) {
+        shouldShow = false;
+      }
     }
+    if (!shouldShow) return null;
     return <circle cx={cx} cy={cy} r={4} fill={color} stroke="#fff" strokeWidth={2} key={index} />;
   }
   let trend: "up" | "down" | "right" = "right";
@@ -812,11 +827,6 @@ function Dashboard({
     }
     return parsedMetrics;
   }, [parsedMetrics, brushRange, defaultBrushStartIndex]);
-
-  const pointDensityStep = useMemo(() => {
-    if (visibleMetrics.length <= 15) return 1;
-    return Math.max(1, Math.ceil(visibleMetrics.length / 20));
-  }, [visibleMetrics]);
 
   const yAxisConfig = useMemo(() => {
     if (chartType === "weight") {
@@ -1592,7 +1602,6 @@ function Dashboard({
                               data={visibleMetrics} 
                               dataKey="weight" 
                               threshold={0.5}
-                              step={pointDensityStep}
                             />
                           )}
                           activeDot={{
@@ -1619,7 +1628,6 @@ function Dashboard({
                               data={visibleMetrics} 
                               dataKey="bmi" 
                               threshold={0}
-                              step={pointDensityStep}
                             />
                           )}
                           activeDot={{
@@ -1646,7 +1654,6 @@ function Dashboard({
                               data={visibleMetrics} 
                               dataKey="waist" 
                               threshold={0}
-                              step={pointDensityStep}
                             />
                           )}
                           activeDot={{
@@ -1710,7 +1717,30 @@ function Dashboard({
                       </div>
                       <div className="flex flex-col items-center justify-center w-full sm:w-32 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner">
                         <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Hiện tại</span>
-                        <span className="font-black text-slate-800 dark:text-slate-100">{sortedMetrics[sortedMetrics.length - 1].weight} <span className="text-xs text-slate-500 font-bold font-sans">kg</span></span>
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="font-black text-slate-800 dark:text-slate-100">{sortedMetrics[sortedMetrics.length - 1].weight}</span>
+                          <span className="text-xs text-slate-500 font-bold font-sans mt-0.5">kg</span>
+                          {sortedMetrics.length > 1 && (
+                            <span
+                              className={cn(
+                                "flex items-center ml-1",
+                                sortedMetrics[sortedMetrics.length - 1].weight > sortedMetrics[sortedMetrics.length - 2].weight
+                                  ? "text-rose-500"
+                                  : sortedMetrics[sortedMetrics.length - 1].weight < sortedMetrics[sortedMetrics.length - 2].weight
+                                  ? "text-emerald-500"
+                                  : "text-slate-400"
+                              )}
+                            >
+                              {sortedMetrics[sortedMetrics.length - 1].weight > sortedMetrics[sortedMetrics.length - 2].weight ? (
+                                <TrendingUp className="w-4 h-4" />
+                              ) : sortedMetrics[sortedMetrics.length - 1].weight < sortedMetrics[sortedMetrics.length - 2].weight ? (
+                                <TrendingDown className="w-4 h-4" />
+                              ) : (
+                                <Minus className="w-4 h-4" />
+                              )}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="flex flex-col items-center justify-center w-full sm:w-32 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner">
                         <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Đã giảm</span>
