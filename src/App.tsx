@@ -461,7 +461,21 @@ function Dashboard({
     "weight",
   );
 
-  const [brushRange, setBrushRange] = useState<{startIndex?: number; endIndex?: number}>({});
+  const [brushRangeState, setBrushRangeState] = useState<{startIndex?: number; endIndex?: number}>({});
+  const brushRangeRef = useRef(brushRangeState);
+  const setBrushRange = (newRange: {startIndex?: number; endIndex?: number}) => {
+    brushRangeRef.current = newRange;
+    setBrushRangeState(newRange);
+  };
+  const brushRange = brushRangeState;
+
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.matchMedia('(max-width: 639px)').matches);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const [showStats, setShowStats] = useState(false);
 
@@ -757,20 +771,6 @@ function Dashboard({
   const latestMetric = parsedMetrics[parsedMetrics.length - 1];
   const hasTodayMetric = metrics.some(m => m.date === new Date().toISOString().split("T")[0]);
 
-  const chartDomainX = useMemo(() => {
-    if (parsedMetrics.length === 0) {
-      const now = Date.now();
-      const sixMonths = 6 * 30 * 24 * 60 * 60 * 1000;
-      return [now - sixMonths, now + sixMonths];
-    }
-    if (parsedMetrics.length === 1) {
-      const point = parsedMetrics[0].timestampForChart;
-      const oneMonth = 30 * 24 * 60 * 60 * 1000;
-      return [point - oneMonth, point + oneMonth];
-    }
-    return ["dataMin", "dataMax"];
-  }, [parsedMetrics]);
-
   const defaultBrushStartIndex = useMemo(() => {
     if (parsedMetrics.length <= 15) return 0;
     
@@ -785,6 +785,171 @@ function Dashboard({
       idx = Math.max(0, parsedMetrics.length - 15);
     }
     return idx;
+  }, [parsedMetrics]);
+
+  const displayMetrics = useMemo(() => {
+    const start = brushRange.startIndex ?? defaultBrushStartIndex;
+    const end = (brushRange.endIndex !== undefined) ? brushRange.endIndex : (parsedMetrics.length - 1);
+    const visibleCount = end - start + 1;
+
+    // We do decimation only if visible points are too dense to look good.
+    if (visibleCount > 30) {
+      const visibleStart = parsedMetrics[start];
+      const visibleEnd = parsedMetrics[end];
+      if (!visibleStart || !visibleEnd) return parsedMetrics;
+
+      const timeRange = visibleEnd.timestampForChart - visibleStart.timestampForChart;
+      const minGap = timeRange / 30; // Max ~30 visual data points 
+
+      let lastTime = 0;
+      return parsedMetrics.map((m, i) => {
+         // Keep ends and current brush frame boundary 
+         if (i === 0 || i === parsedMetrics.length - 1 || i === start || i === end) {
+            lastTime = m.timestampForChart;
+            return m;
+         }
+
+         if (m.timestampForChart - lastTime >= minGap) {
+            lastTime = m.timestampForChart;
+            return m;
+         }
+
+         // Drop point by nullifying charted values
+         return { ...m, weight: null, bmi: null, waist: null };
+      });
+    }
+
+    return parsedMetrics;
+  }, [parsedMetrics, brushRange, defaultBrushStartIndex]);
+
+  const chartWrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = chartWrapperRef.current;
+    if (!el || !isMobile) return;
+
+    let isPinching = false;
+    let isPanning = false;
+    let startDist = 0;
+    let startX = 0;
+    let startY = 0;
+    let startRange = { start: 0, end: 0 };
+
+    const onTouchStart = (e: TouchEvent) => {
+      const currentStart = brushRangeRef.current.startIndex ?? defaultBrushStartIndex;
+      const currentEnd = brushRangeRef.current.endIndex ?? (parsedMetrics.length - 1);
+
+      if (e.touches.length === 2) {
+        isPinching = true;
+        isPanning = false;
+        startDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        startRange = { start: currentStart, end: currentEnd };
+        if (e.cancelable) e.preventDefault();
+      } else if (e.touches.length === 1) {
+        isPanning = true;
+        isPinching = false;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        startRange = { start: currentStart, end: currentEnd };
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (parsedMetrics.length <= 1) return;
+
+      if (isPinching && e.touches.length === 2) {
+        if (e.cancelable) e.preventDefault();
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const scale = startDist / dist;
+        
+        const rangeLen = startRange.end - startRange.start;
+        const newRangeLen = rangeLen * scale;
+        
+        const center = startRange.start + rangeLen / 2;
+        let newStart = Math.round(center - newRangeLen / 2);
+        let newEnd = Math.round(center + newRangeLen / 2);
+        
+        if (newEnd - newStart < 5) {
+          newStart = Math.floor(center - 2.5);
+          newEnd = Math.ceil(center + 2.5);
+        }
+        
+        if (newStart < 0) newStart = 0;
+        if (newEnd > parsedMetrics.length - 1) newEnd = parsedMetrics.length - 1;
+        
+        setBrushRange({ startIndex: newStart, endIndex: newEnd });
+      } else if (isPanning && e.touches.length === 1) {
+        const deltaX = e.touches[0].clientX - startX;
+        const deltaY = e.touches[0].clientY - startY;
+        
+        // If user is mostly scrolling vertically, abort pan
+        if (Math.abs(deltaY) > Math.abs(deltaX) * 1.5) {
+          isPanning = false;
+          return;
+        }
+
+        if (Math.abs(deltaX) > 10 && e.cancelable) {
+           e.preventDefault();
+        }
+        
+        const visibleRange = startRange.end - startRange.start;
+        const pixelsPerItem = el.clientWidth / (visibleRange || 1);
+        const deltaIndex = Math.round(-deltaX / (pixelsPerItem || 10));
+        
+        let newStart = startRange.start + deltaIndex;
+        let newEnd = startRange.end + deltaIndex;
+        
+        const rangeLen = startRange.end - startRange.start;
+        
+        if (newStart < 0) {
+          newStart = 0;
+          newEnd = rangeLen;
+        }
+        if (newEnd > parsedMetrics.length - 1) {
+          newEnd = parsedMetrics.length - 1;
+          newStart = newEnd - rangeLen;
+        }
+        
+        setBrushRange({ startIndex: newStart, endIndex: newEnd });
+      }
+    };
+
+    const onTouchEnd = () => {
+      isPinching = false;
+      isPanning = false;
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd);
+    el.addEventListener('touchcancel', onTouchEnd);
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [parsedMetrics.length, defaultBrushStartIndex, isMobile]);
+
+  const chartDomainX = useMemo(() => {
+    if (parsedMetrics.length === 0) {
+      const now = Date.now();
+      const sixMonths = 6 * 30 * 24 * 60 * 60 * 1000;
+      return [now - sixMonths, now + sixMonths];
+    }
+    if (parsedMetrics.length === 1) {
+      const point = parsedMetrics[0].timestampForChart;
+      const oneMonth = 30 * 24 * 60 * 60 * 1000;
+      return [point - oneMonth, point + oneMonth];
+    }
+    return ["dataMin", "dataMax"];
   }, [parsedMetrics]);
 
   let whtr = null;
@@ -1453,10 +1618,10 @@ function Dashboard({
               </div>
 
               {sortedMetrics.length > 0 ? (
-                <div className="w-full mt-4">
+                <div className="w-full mt-4" ref={chartWrapperRef}>
                   <ResponsiveContainer width="100%" height={300}>
                     <LineChart
-                      data={parsedMetrics}
+                      data={displayMetrics}
                       margin={{ top: 10, right: 30, bottom: 20, left: 10 }}
                     >
                       <CartesianGrid
@@ -1571,6 +1736,7 @@ function Dashboard({
                           name="Cân nặng (kg)"
                           stroke="#4f46e5"
                           strokeWidth={4}
+                          connectNulls={true}
                           dot={(props: any) => (
                             <TrendDot 
                               {...props} 
@@ -1597,6 +1763,7 @@ function Dashboard({
                           name="Chỉ số BMI"
                           stroke="#0ea5e9"
                           strokeWidth={4}
+                          connectNulls={true}
                           dot={(props: any) => (
                             <TrendDot 
                               {...props} 
@@ -1623,6 +1790,7 @@ function Dashboard({
                           name="Vòng eo (cm)"
                           stroke="#f59e0b"
                           strokeWidth={4}
+                          connectNulls={true}
                           dot={(props: any) => (
                             <TrendDot 
                               {...props} 
@@ -1642,7 +1810,7 @@ function Dashboard({
                           animationDuration={1500}
                         />
                       )}
-                      {parsedMetrics.length > 5 && (
+                      {parsedMetrics.length > 5 && !isMobile && (
                         <Brush
                           dataKey="timestampForChart"
                           height={40}
