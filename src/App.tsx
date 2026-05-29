@@ -3,6 +3,8 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, signIn, signOut, testConnection } from "./firebase";
 import { useMetrics, Metric, UserProfile } from "./hooks/useMetrics";
 import {
+  AreaChart,
+  Area,
   LineChart,
   Line,
   XAxis,
@@ -42,6 +44,7 @@ import {
   TrendingDown,
   TrendingUp,
   Minus,
+  Printer,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { clsx, type ClassValue } from "clsx";
@@ -56,41 +59,33 @@ function TrendDot({ cx, cy, isLast, color, index, data, dataKey, threshold = 0 }
   if (typeof cx !== "number" || typeof cy !== "number" || isNaN(cx) || isNaN(cy)) {
     return null;
   }
-  if (!isLast) {
-    let shouldShow = true;
-    if (data && data.length > 12 && data[0] && data[data.length - 1]) {
-      const minTimeDiff = (data[data.length - 1].timestampForChart - data[0].timestampForChart) / 12;
-      let lastShownIndex = 0;
-      for (let i = 1; i <= index; i++) {
-        if (!data[i] || !data[lastShownIndex]) continue;
-        const timeDiff = data[i].timestampForChart - data[lastShownIndex].timestampForChart;
-        if (timeDiff >= minTimeDiff) {
-          lastShownIndex = i;
+  if (isLast) {
+    return <circle cx={cx} cy={cy} r={5} fill={color} stroke="#fff" strokeWidth={2} key={index} />;
+  }
+
+  let shouldShow = true;
+  if (data && data.length > 2 && data[0] && data[data.length - 1] && data[index]) {
+    const timeRange = data[data.length - 1].timestampForChart - data[0].timestampForChart;
+    if (timeRange > 0) {
+      const minSpacing = timeRange / 25; // Define density threshold
+      const currentTs = data[index].timestampForChart;
+      
+      const distToLast = data[data.length - 1].timestampForChart - currentTs;
+      if (distToLast > 0 && distToLast < minSpacing * 1.5) {
+        shouldShow = false;
+      } else {
+        const distPrev = index > 0 && data[index - 1] ? currentTs - data[index - 1].timestampForChart : Infinity;
+        const distNext = index < data.length - 1 && data[index + 1] ? data[index + 1].timestampForChart - currentTs : Infinity;
+
+        if (distPrev < minSpacing || distNext < minSpacing) {
+          shouldShow = false;
         }
       }
-      if (lastShownIndex !== index) {
-        shouldShow = false;
-      }
-    }
-    if (!shouldShow) return null;
-    return <circle cx={cx} cy={cy} r={4} fill={color} stroke="#fff" strokeWidth={2} key={index} />;
-  }
-  let trend: "up" | "down" | "right" = "right";
-  if (index > 0) {
-    const current = data[index]?.[dataKey];
-    const prev = data[index - 1]?.[dataKey];
-    if (typeof current === 'number' && typeof prev === 'number') {
-      if (current - prev > threshold) trend = "up";
-      else if (current - prev < -threshold) trend = "down";
     }
   }
-  const s = 5.5; // Slightly smaller to match dot visual size roughly
-  let d = "";
-  if (trend === "up") d = `M ${cx} ${cy - s - 1} L ${cx - s - 1} ${cy + s} L ${cx + s + 1} ${cy + s} Z`;
-  else if (trend === "down") d = `M ${cx} ${cy + s + 1} L ${cx - s - 1} ${cy - s} L ${cx + s + 1} ${cy - s} Z`;
-  else d = `M ${cx + s + 1} ${cy} L ${cx - s} ${cy - s - 1} L ${cx - s} ${cy + s + 1} Z`;
-  
-  return <path d={d} fill="#ef4444" stroke="#fff" strokeWidth={1.5} strokeLinejoin="round" key={index} />;
+
+  if (!shouldShow) return null;
+  return <circle cx={cx} cy={cy} r={3.5} fill={color} stroke="#fff" strokeWidth={2} key={index} />;
 }
 
 function CountdownBanner({
@@ -136,49 +131,51 @@ function CountdownBanner({
   if (!timeLeft) return null;
 
   return (
-    <div className="bg-amber-100/50 rounded-[2rem] p-6 shadow-sm border border-amber-200 flex flex-col md:flex-row items-center justify-center gap-6 mt-4">
-      <div className="flex items-center gap-3 text-amber-700 max-w-sm text-center md:text-left">
-        <Target className="w-10 h-10 text-amber-500 animate-pulse hidden md:block" />
+    <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-amber-200/50 dark:border-amber-900/30 flex flex-col md:flex-row items-center justify-center gap-6 mt-4">
+      <div className="flex items-center gap-4 text-amber-700 max-w-sm text-center md:text-left">
+        <div className="p-3 bg-amber-100 dark:bg-amber-900/50 rounded-2xl hidden md:block border border-amber-200 dark:border-amber-800">
+          <Target className="w-8 h-8 text-amber-600 dark:text-amber-400 animate-[pulse_3s_ease-in-out_infinite]" />
+        </div>
         <div>
-          <p className="text-sm font-bold opacity-80 uppercase tracking-widest text-amber-600 mb-1">
+          <p className="text-xs font-bold tracking-widest text-amber-600/80 dark:text-amber-400/80 uppercase mb-1 drop-shadow-sm">
             Mục tiêu sắp tới
           </p>
-          <h3 className="text-xl font-black text-amber-900 leading-tight">
+          <h3 className="text-2xl font-black tracking-tight text-amber-900 dark:text-amber-100 leading-tight">
             {targetEvent || "Ngày trọng đại"}
           </h3>
         </div>
       </div>
 
-      <div className="flex gap-2 sm:gap-4 text-center">
-        <div className="bg-white px-3 sm:px-4 py-2 sm:py-3 rounded-2xl shadow-sm border border-amber-100 min-w-[60px] sm:min-w-[70px]">
-          <div className="text-2xl sm:text-3xl font-black text-amber-600">
+      <div className="flex gap-2 sm:gap-3 text-center">
+        <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm px-3 sm:px-4 py-3 rounded-2xl shadow-sm border border-black/5 min-w-[70px]">
+          <div className="text-2xl sm:text-3xl font-black tracking-tight text-amber-600 dark:text-amber-500">
             {timeLeft.days}
           </div>
-          <div className="text-[10px] font-bold text-amber-400 uppercase mt-1">
+          <div className="text-[10px] font-bold text-amber-500/70 dark:text-amber-400/70 uppercase mt-1 tracking-wider">
             Ngày
           </div>
         </div>
-        <div className="bg-white px-3 sm:px-4 py-2 sm:py-3 rounded-2xl shadow-sm border border-amber-100 min-w-[60px] sm:min-w-[70px]">
-          <div className="text-2xl sm:text-3xl font-black text-amber-600">
+        <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm px-3 sm:px-4 py-3 rounded-2xl shadow-sm border border-black/5 min-w-[70px]">
+          <div className="text-2xl sm:text-3xl font-black tracking-tight text-amber-600 dark:text-amber-500">
             {timeLeft.hours}
           </div>
-          <div className="text-[10px] font-bold text-amber-400 uppercase mt-1">
+          <div className="text-[10px] font-bold text-amber-500/70 dark:text-amber-400/70 uppercase mt-1 tracking-wider">
             Giờ
           </div>
         </div>
-        <div className="bg-white px-3 sm:px-4 py-2 sm:py-3 rounded-2xl shadow-sm border border-amber-100 min-w-[60px] sm:min-w-[70px]">
-          <div className="text-2xl sm:text-3xl font-black text-amber-600">
+        <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm px-3 sm:px-4 py-3 rounded-2xl shadow-sm border border-black/5 min-w-[70px]">
+          <div className="text-2xl sm:text-3xl font-black tracking-tight text-amber-600 dark:text-amber-500">
             {timeLeft.mins}
           </div>
-          <div className="text-[10px] font-bold text-amber-400 uppercase mt-1">
+          <div className="text-[10px] font-bold text-amber-500/70 dark:text-amber-400/70 uppercase mt-1 tracking-wider">
             Phút
           </div>
         </div>
-        <div className="bg-white px-3 sm:px-4 py-2 sm:py-3 rounded-2xl shadow-sm border border-amber-100 min-w-[60px] sm:min-w-[70px]">
-          <div className="text-2xl sm:text-3xl font-black text-amber-600 tabular-nums">
+        <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm px-3 sm:px-4 py-3 rounded-2xl shadow-sm border border-black/5 min-w-[70px]">
+          <div className="text-2xl sm:text-3xl font-black tracking-tight text-amber-600 dark:text-amber-500 tabular-nums">
             {timeLeft.secs}
           </div>
-          <div className="text-[10px] font-bold text-amber-400 uppercase mt-1">
+          <div className="text-[10px] font-bold text-amber-500/70 dark:text-amber-400/70 uppercase mt-1 tracking-wider">
             Giây
           </div>
         </div>
@@ -189,6 +186,7 @@ function CountdownBanner({
 
 function MonthlyCheckin({ profile, updateProfile }: any) {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [showInfo, setShowInfo] = useState(false);
   
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -251,13 +249,39 @@ function MonthlyCheckin({ profile, updateProfile }: any) {
 
   return (
     <div className="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 mt-4 transition-all hover:shadow-md">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-          <div className="p-1.5 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg">
-            <Calendar className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
-          </div>
-          Lịch tháng
-        </h3>
+      <div className="flex items-center justify-between mb-4 relative z-20">
+        <div className="flex items-center gap-2">
+          <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+            <div className="p-1.5 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg">
+              <Calendar className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+            </div>
+            Lịch cá nhân
+          </h3>
+          <button 
+            onClick={() => setShowInfo(!showInfo)}
+            className="p-1 text-slate-400 hover:text-indigo-500 transition-colors"
+          >
+            <Info className="w-4 h-4" />
+          </button>
+          
+          {showInfo && (
+            <div className="absolute top-full left-0 mt-2 w-72 bg-white dark:bg-slate-800 p-4 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 z-50">
+              <h4 className="font-bold text-sm text-slate-800 dark:text-white mb-2">Hướng dẫn sử dụng</h4>
+              <ul className="text-xs text-slate-600 dark:text-slate-300 space-y-2 list-disc pl-4">
+                <li>Nhấn vào một ngày bất kỳ để thay đổi trạng thái (màu sắc).</li>
+                <li>Tiếp tục nhấn để chuyển đổi qua lại giữa các trạng thái khác nhau.</li>
+                <li>Bạn có thể định nghĩa ý nghĩa của từng màu sắc ở phần chú thích bên dưới.</li>
+                <li>Hệ thống sẽ tự động lưu sau mỗi lần nhấn!</li>
+              </ul>
+              <button 
+                onClick={() => setShowInfo(false)}
+                className="mt-3 w-full py-1.5 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400 rounded-lg text-xs font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+              >
+                Đã hiểu
+              </button>
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900/50 px-2 py-1 rounded-xl border border-slate-100 dark:border-slate-700/50">
           <button onClick={prevMonth} className="p-1 text-slate-400 hover:text-indigo-500 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
           <span className="text-xs font-black w-20 text-center uppercase tracking-widest text-slate-600 dark:text-slate-300">
@@ -328,6 +352,24 @@ function MonthlyCheckin({ profile, updateProfile }: any) {
   );
 }
 
+function formatToDDMMYY(dateString: string | number | Date) {
+  if (!dateString) return "";
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return "";
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = String(d.getFullYear()).slice(-2);
+  return `${day}/${month}/${year}`;
+}
+
+function getLocalDateString() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -384,13 +426,13 @@ export default function App() {
 
   if (!user && !isGuest) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-sky-50 text-slate-800 p-4 font-sans">
-        <div className="max-w-md w-full bg-white p-8 sm:p-10 rounded-[2rem] shadow-xl border border-sky-100 text-center">
-          <div className="w-20 h-20 bg-indigo-100 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner">
-            <Apple className="w-10 h-10 text-indigo-500" />
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 p-4 font-sans">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 p-8 sm:p-10 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/50 dark:border-slate-800 text-center">
+          <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/30 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6">
+            <Apple className="w-10 h-10 text-indigo-500 dark:text-indigo-400" />
           </div>
           <div className="flex items-baseline justify-center gap-2 mb-8">
-            <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
               OnlyTrack
             </h1>
             <p className="text-indigo-600 font-medium text-lg sm:text-xl">
@@ -456,7 +498,7 @@ function Dashboard({
   const [weight, setWeight] = useState("");
   const [waist, setWaist] = useState("");
   const [note, setNote] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(getLocalDateString());
   const [rememberHeight, setRememberHeight] = useState(() => localStorage.getItem("remember_height") === "true");
   const [height, setHeight] = useState(() => localStorage.getItem("saved_height") || "");
 
@@ -484,21 +526,19 @@ function Dashboard({
   const [brushRange, setBrushRange] = useState<{startIndex?: number; endIndex?: number}>({});
 
   const [showStats, setShowStats] = useState(false);
+  const [summaryMonths, setSummaryMonths] = useState(1);
 
   const isProfileComplete = profile?.nickname && profile?.slogan;
   const [showAccountModal, setShowAccountModal] = useState(false);
 
   useEffect(() => {
     if (profile) {
-      if (profile.nickname && nickname === "") setNickname(profile.nickname);
-      if (profile.slogan && slogan === "") setSlogan(profile.slogan);
-      if (profile.targetDate && targetDate === "")
-        setTargetDate(profile.targetDate);
-      if (profile.targetEvent && targetEvent === "")
-        setTargetEvent(profile.targetEvent);
-      if (profile.targetWeight && targetWeight === "")
-        setTargetWeight(profile.targetWeight.toString());
-      if (profile.reminderTime) setReminderTime(profile.reminderTime);
+      if (profile.nickname !== undefined) setNickname(profile.nickname);
+      if (profile.slogan !== undefined) setSlogan(profile.slogan);
+      if (profile.targetDate !== undefined) setTargetDate(profile.targetDate);
+      if (profile.targetEvent !== undefined) setTargetEvent(profile.targetEvent);
+      if (profile.targetWeight !== undefined) setTargetWeight(profile.targetWeight.toString());
+      if (profile.reminderTime !== undefined) setReminderTime(profile.reminderTime);
     }
   }, [profile]);
 
@@ -684,12 +724,12 @@ function Dashboard({
     e.preventDefault();
     setSavingProfile(true);
     const updates: Partial<UserProfile> = {};
-    if (nickname) updates.nickname = nickname;
-    if (slogan) updates.slogan = slogan;
-    if (targetDate) updates.targetDate = targetDate;
-    if (targetEvent) updates.targetEvent = targetEvent;
-    if (targetWeight) updates.targetWeight = parseFloat(targetWeight);
-    if (reminderTime) updates.reminderTime = reminderTime;
+    updates.nickname = nickname;
+    updates.slogan = slogan;
+    updates.targetDate = targetDate;
+    updates.targetEvent = targetEvent;
+    updates.targetWeight = targetWeight ? parseFloat(targetWeight) : undefined;
+    updates.reminderTime = reminderTime;
 
     await updateProfile(updates);
     setSavingProfile(false);
@@ -775,7 +815,7 @@ function Dashboard({
   }, [sortedMetrics, profile?.height]);
 
   const latestMetric = parsedMetrics[parsedMetrics.length - 1];
-  const hasTodayMetric = metrics.some(m => m.date === new Date().toISOString().split("T")[0]);
+  const hasTodayMetric = metrics.some(m => m.date === getLocalDateString());
 
   const chartDomainX = useMemo(() => {
     if (parsedMetrics.length === 0) {
@@ -829,10 +869,72 @@ function Dashboard({
     return parsedMetrics;
   }, [parsedMetrics, brushRange, defaultBrushStartIndex]);
 
+  const availableMonths = useMemo(() => {
+    if (parsedMetrics.length === 0) return 0;
+    const firstDate = parsedMetrics[0].timestampForChart;
+    const lastDate = parsedMetrics[parsedMetrics.length - 1].timestampForChart;
+    const diffDays = (lastDate - firstDate) / (1000 * 60 * 60 * 24);
+    // Even if they have e.g. 40 days, allow up to 2 months so they can compare
+    return Math.max(1, Math.ceil(diffDays / 30));
+  }, [parsedMetrics]);
+
+  const summaryData = useMemo(() => {
+    if (parsedMetrics.length === 0) return null;
+    
+    // Use the latest metric date as the reference point
+    const latestDate = new Date(parsedMetrics[parsedMetrics.length - 1].timestampForChart);
+    
+    const rangeDate = new Date(latestDate.getTime());
+    rangeDate.setDate(latestDate.getDate() - (summaryMonths * 30));
+    rangeDate.setHours(0, 0, 0, 0);
+
+    // Find the closest metric to rangeDate to serve as our start point
+    let startMetric = parsedMetrics[0];
+    let minDiff = Infinity;
+    for (const m of parsedMetrics) {
+      const diff = Math.abs(m.timestampForChart - rangeDate.getTime());
+      if (diff < minDiff) {
+        minDiff = diff;
+        startMetric = m;
+      }
+    }
+
+    const recentMetrics = parsedMetrics.filter(m => m.timestampForChart >= startMetric.timestampForChart);
+    const endMetric = parsedMetrics[parsedMetrics.length - 1];
+    
+    let weightChangeStr = "0.0 kg";
+    let isLoss = false;
+    let avgWeightLostPerWeekStr = "--";
+    
+    let hasData = true;
+    if (startMetric.weight && endMetric.weight && startMetric !== endMetric) {
+      const diff = endMetric.weight - startMetric.weight;
+      isLoss = diff < 0;
+      weightChangeStr = Math.abs(diff).toFixed(1) + " kg";
+      
+      const exactDays = Math.max(1, (endMetric.timestampForChart - startMetric.timestampForChart) / (1000 * 60 * 60 * 24));
+      const weeks = Math.max(1, exactDays / 7);
+      
+      const avg = Math.abs(diff) / weeks;
+      avgWeightLostPerWeekStr = avg.toFixed(1) + " kg/tuần";
+    }
+
+    return {
+      recentMetrics,
+      weightChangeStr,
+      isLoss,
+      avgWeightLostPerWeekStr,
+      hasData: true
+    };
+  }, [parsedMetrics, summaryMonths]);
+
   const yAxisConfig = useMemo(() => {
     if (chartType === "weight") {
       if (visibleMetrics.length > 0) {
         const weights = visibleMetrics.map(m => m.weight);
+        if (profile?.targetWeight) {
+          weights.push(profile.targetWeight);
+        }
         const minWeight = Math.min(...weights);
         const maxWeight = Math.max(...weights);
         
@@ -893,30 +995,37 @@ function Dashboard({
   }, [chartType, visibleMetrics]);
 
   const bentoCard =
-    "bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 transition-all hover:shadow-md";
+    "bg-white dark:bg-slate-900 p-5 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/50 dark:border-white/5 transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]";
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-20 font-sans text-slate-800 dark:text-slate-100 selection:bg-indigo-200">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 pb-20 font-sans text-slate-800 dark:text-slate-100 selection:bg-indigo-200">
       {/* Header */}
-      <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-50 border-b border-indigo-50/50 dark:border-slate-800">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+      <header className="bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl sticky top-0 z-50 border-b border-black/5 dark:border-white/5">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-[72px] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/50 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center">
               <Apple className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
             </div>
             <div className="flex items-baseline gap-1.5">
-              <h1 className="font-bold text-xl sm:text-2xl text-slate-900 dark:text-white tracking-tight leading-tight">
+              <h1 className="font-black text-xl sm:text-2xl text-slate-900 dark:text-white tracking-tighter leading-tight">
                 OnlyTrack
               </h1>
-              <span className="text-xs sm:text-sm font-semibold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">
+              <span className="text-[10px] sm:text-xs font-bold text-indigo-500/80 dark:text-indigo-400/80 uppercase tracking-widest mt-1">
                 by Dr.Son
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 print:hidden">
+            <button
+              onClick={() => window.print()}
+              className="w-10 h-10 rounded-full flex items-center justify-center bg-transparent text-slate-400 hover:bg-black/5 hover:text-slate-600 dark:hover:bg-white/5 dark:hover:text-slate-200 transition-colors"
+              title="Xuất báo cáo (PDF)"
+            >
+              <Printer className="w-5 h-5" />
+            </button>
             <button
               onClick={() => setShowStats(!showStats)}
-              className="w-10 h-10 rounded-full flex items-center justify-center bg-slate-100 text-slate-500 hover:bg-indigo-100 hover:text-indigo-600 transition-colors"
+              className="w-10 h-10 rounded-full flex items-center justify-center bg-transparent text-slate-400 hover:bg-black/5 hover:text-slate-600 dark:hover:bg-white/5 dark:hover:text-slate-200 transition-colors"
               title={showStats ? "Ẩn chỉ số" : "Hiện chỉ số"}
             >
               {showStats ? (
@@ -927,7 +1036,7 @@ function Dashboard({
             </button>
             <button
               onClick={() => setShowAccountModal(true)}
-              className="flex items-center gap-2 group bg-slate-100 hover:bg-slate-200 px-3 sm:px-4 py-2 rounded-full border border-slate-200 transition-colors"
+              className="flex items-center gap-2 group bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 px-3 sm:px-4 py-2 rounded-full border border-black/5 dark:border-white/5 shadow-sm transition-colors"
               title="Quản lí tài khoản"
             >
               <UserCircle className="w-5 h-5 text-slate-500 group-hover:text-indigo-600 transition-colors" />
@@ -973,10 +1082,10 @@ function Dashboard({
         )}
 
         {/* Mobile Metrics Box */}
-        <div className="md:hidden bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex flex-col gap-3">
+        <div className="md:hidden bg-white dark:bg-slate-900 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/50 dark:border-white/5 p-5 flex flex-col gap-4 mt-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-teal-700">
-              <div className="p-1.5 bg-teal-100 rounded-lg">
+            <div className="flex items-center gap-2.5 text-teal-700 dark:text-teal-400">
+              <div className="p-2 bg-teal-50 dark:bg-teal-900/30 rounded-xl">
                 <Scale className="w-4 h-4" />
               </div>
               <span className="font-bold text-sm">Cân nặng</span>
@@ -1232,10 +1341,10 @@ function Dashboard({
           <div
             className={cn(
               bentoCard,
-              "md:col-span-2 lg:col-span-1 flex flex-col justify-between relative overflow-hidden border-2",
+              "md:col-span-2 lg:col-span-1 flex flex-col justify-between relative overflow-hidden",
               hasMetabolicRisk
-                ? "bg-rose-50 dark:bg-rose-900/10 border-rose-200 dark:border-rose-900/30"
-                : "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/30",
+                ? "bg-rose-50 dark:bg-rose-900/10 border-rose-200/50 dark:border-rose-900/30"
+                : "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200/50 dark:border-emerald-900/30",
             )}
           >
             <div className="flex items-start justify-between mb-4">
@@ -1305,12 +1414,12 @@ function Dashboard({
         </div>
 
         {/* Inputs section */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-5 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 print:block">
+          <div className="lg:col-span-5 space-y-6 print:w-full print:block">
             {/* Input Metric */}
-            <div className={cn(bentoCard, "border-2 transition-all duration-500", !hasTodayMetric ? "border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.3)] animate-[pulse_2s_ease-in-out_infinite]" : "border-indigo-50 dark:border-indigo-900/30")}>
-              <h2 className="text-xl font-black text-slate-900 dark:text-white mb-6 flex items-center gap-3">
-                <div className="p-2.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
+            <div className={cn(bentoCard, "transition-all duration-700 print:hidden", !hasTodayMetric ? "shadow-[0_0_20px_rgba(244,63,94,0.15)] border-rose-200 dark:border-rose-900/50" : "")}>
+              <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white mb-6 flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-xl">
                   <Plus className="w-5 h-5" />
                 </div>
                 Cập nhật chỉ số mới
@@ -1321,13 +1430,17 @@ function Dashboard({
                     Ngày cập nhật
                   </label>
                   <div className="relative">
-                    <Calendar className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                    <Calendar className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors z-10 pointer-events-none" />
+                    <span className="absolute left-10 text-slate-700 dark:text-slate-100 font-bold top-1/2 -translate-y-1/2 pointer-events-none">
+                      {date ? formatToDDMMYY(date) : "DD/MM/YY"}
+                    </span>
                     <input
                       type="date"
                       required
                       value={date}
                       onChange={(e) => setDate(e.target.value)}
-                      className="w-full pl-10 pr-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 dark:text-slate-100"
+                      className="w-full pl-10 pr-3 py-3 bg-slate-50/50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold shadow-sm"
+                      style={{ color: "transparent" }}
                     />
                   </div>
                 </div>
@@ -1346,7 +1459,7 @@ function Dashboard({
                       inputMode="decimal"
                       value={weight}
                       onChange={handleDecimalInput(setWeight)}
-                      className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
+                      className="w-full px-2 sm:px-3 py-3 bg-slate-50/50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100 shadow-sm"
                     />
                   </div>
                   <div>
@@ -1362,7 +1475,7 @@ function Dashboard({
                       inputMode="decimal"
                       value={waist}
                       onChange={handleDecimalInput(setWaist)}
-                      className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
+                      className="w-full px-2 sm:px-3 py-3 bg-slate-50/50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100 shadow-sm"
                     />
                   </div>
                   <div>
@@ -1378,7 +1491,7 @@ function Dashboard({
                       inputMode="decimal"
                       value={height}
                       onChange={handleDecimalInput(setHeight)}
-                      className="w-full px-2 sm:px-3 py-3 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100"
+                      className="w-full px-2 sm:px-3 py-3 bg-slate-50/50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-indigo-500/10 dark:focus:ring-indigo-500/20 focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all font-bold text-base sm:text-lg text-slate-800 dark:text-slate-100 shadow-sm"
                     />
                     <label className="flex items-center gap-1.5 cursor-pointer mt-2 ml-1">
                       <input
@@ -1418,20 +1531,135 @@ function Dashboard({
                 </button>
               </form>
             </div>
+
+            {/* Summary Card */}
+            {summaryData && summaryData.hasData && (
+              <div className={cn(bentoCard, "flex flex-col relative overflow-hidden group")}>
+                {/* Decorative background element background */}
+                <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none transition-transform duration-700 group-hover:scale-150"></div>
+                <div className="absolute bottom-0 left-0 -ml-8 -mb-8 w-24 h-24 bg-sky-500/5 rounded-full blur-2xl pointer-events-none transition-transform duration-700 group-hover:scale-150"></div>
+
+                <div className="flex items-center gap-3 relative z-10 mb-4">
+                  <div className="p-2.5 bg-sky-50 dark:bg-sky-900/30 text-sky-500 rounded-xl shadow-sm border border-sky-100 dark:border-sky-800">
+                    <Target className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-lg text-slate-800 dark:text-slate-100 tracking-tight">Thống kê xu hướng</h3>
+                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">Tiến độ cá nhân</p>
+                  </div>
+                </div>
+
+                {availableMonths >= 2 && (
+                  <div className="relative z-10 mb-6 overflow-x-auto pb-1 -mx-2 px-2 sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    <div className="flex items-center bg-slate-100/80 dark:bg-slate-800/80 backdrop-blur-sm p-1.5 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 w-max sm:w-full sm:grid sm:grid-cols-5 gap-1">
+                      {[1, 2, 3, 4, 6].filter(m => m <= Math.max(1, availableMonths)).map(m => (
+                        <button
+                          type="button"
+                          key={m}
+                          onClick={() => setSummaryMonths(m)}
+                          className={cn(
+                            "px-4 sm:px-2 py-2 text-xs font-bold rounded-xl transition-all duration-300 text-center whitespace-nowrap",
+                            summaryMonths === m 
+                              ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm ring-1 ring-black/5 dark:ring-white/5"
+                              : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+                          )}
+                        >
+                          {m} tháng
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4 sm:gap-6 mb-2 relative z-10">
+                  <div className="bg-gradient-to-br from-slate-50 to-slate-100/50 dark:from-slate-800/80 dark:to-slate-800/40 p-5 rounded-3xl border border-slate-200/60 dark:border-slate-700/50 shadow-sm transition-all duration-500 hover:shadow-md hover:border-sky-200 dark:hover:border-sky-800">
+                    <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500"></span>
+                      THAY ĐỔI ({summaryMonths} THÁNG)
+                    </p>
+                    <div className="flex items-baseline gap-1 mt-1">
+                      <span className={cn(
+                        "text-3xl font-black tracking-tighter drop-shadow-sm",
+                        summaryData.isLoss ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                      )}>
+                        {summaryData.isLoss ? "-" : "+"}{summaryData.weightChangeStr}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-slate-50 to-slate-100/50 dark:from-slate-800/80 dark:to-slate-800/40 p-5 rounded-3xl border border-slate-200/60 dark:border-slate-700/50 shadow-sm transition-all duration-500 hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-800">
+                    <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 dark:bg-indigo-500"></span>
+                      {summaryData.isLoss ? "TRUNG BÌNH GIẢM" : (summaryData.weightChangeStr === "0.0 kg" ? "TRUNG BÌNH" : "TRUNG BÌNH TĂNG")}
+                    </p>
+                    <div className="flex items-baseline gap-1.5 mt-1">
+                      <span className="text-3xl font-black tracking-tighter text-indigo-600 dark:text-indigo-400 drop-shadow-sm">
+                        {summaryData.avgWeightLostPerWeekStr.split(" ")[0]}
+                      </span>
+                      <span className="text-sm font-bold text-indigo-500/70 dark:text-indigo-400/70">
+                         kg/tuần
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-32 w-full mt-4 relative -mx-2 opacity-90 transition-opacity duration-500 group-hover:opacity-100">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={summaryData.recentMetrics}
+                      margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <YAxis hide domain={['dataMin - 1', 'dataMax + 1']} />
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                             const data = payload[0].payload;
+                             return (
+                              <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-2.5 shadow-lg border border-black/5 dark:border-white/5 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 flex flex-col gap-1 items-center">
+                                <span className="text-sky-600 dark:text-sky-400 text-[10px] uppercase tracking-widest">{formatToDDMMYY(data.date)}</span>
+                                <span className="text-sm">{data.weight} kg</span>
+                              </div>
+                             )
+                          }
+                          return null;
+                        }}
+                        cursor={{ stroke: '#0ea5e9', strokeWidth: 1, strokeDasharray: '4 4' }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="weight"
+                        stroke="#0ea5e9"
+                        strokeWidth={3}
+                        fillOpacity={1}
+                        fill="url(#colorWeight)"
+                        isAnimationActive={true}
+                        animationDuration={1500}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="lg:col-span-7 space-y-6">
+          <div className="lg:col-span-7 space-y-6 print:w-full print:block">
             {/* Chart Widget */}
             <div
               ref={chartRef}
               className={cn(
                 bentoCard,
-                "flex flex-col min-h-[520px] border-2 border-slate-100 dark:border-slate-800",
+                "flex flex-col min-h-[520px] overflow-hidden",
               )}
             >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 px-2">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                  <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
                     <Activity className="w-5 h-5" />
                   </div>
                   <h2 className="text-xl font-black text-slate-900 dark:text-white">
@@ -1439,7 +1667,7 @@ function Dashboard({
                   </h2>
                 </div>
 
-                <div className="inline-flex rounded-xl p-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner">
+                <div className="inline-flex rounded-xl p-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner print:hidden">
                   <button
                     onClick={() => setChartType("weight")}
                     className={cn(
@@ -1486,7 +1714,8 @@ function Dashboard({
                       <CartesianGrid
                         strokeDasharray="4 4"
                         vertical={false}
-                        stroke="#e2e8f0"
+                        stroke="#94a3b8"
+                        strokeOpacity={0.15}
                       />
                       <XAxis
                         dataKey="timestampForChart"
@@ -1533,33 +1762,33 @@ function Dashboard({
                           if (active && payload && payload.length) {
                             const data = payload[0].payload;
                             return (
-                              <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 dark:border-slate-700">
-                                <p className="text-slate-500 dark:text-slate-400 font-bold mb-3 text-sm border-b border-slate-100 dark:border-slate-700 pb-2">
-                                  {new Date(data.date).toLocaleDateString("vi-VN", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                              <div className="bg-white dark:bg-slate-800 p-2.5 px-3.5 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 dark:border-slate-700 min-w-[140px]">
+                                <p className="text-slate-500 dark:text-slate-400 font-bold mb-1.5 text-[10px] uppercase tracking-wider border-b border-slate-100 dark:border-slate-700 pb-1.5">
+                                  {formatToDDMMYY(data.date)}
                                 </p>
-                                <div className="space-y-2 mb-3">
+                                <div className="space-y-1 mb-1.5">
                                   {data.weight && (
-                                    <div className="flex items-center justify-between gap-4">
-                                      <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-indigo-500"></div>Cân nặng</span>
-                                      <span className="font-black text-slate-800 dark:text-slate-100">{data.weight} kg</span>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>Cân nặng</span>
+                                      <span className="font-black text-xs text-slate-800 dark:text-slate-100">{data.weight} kg</span>
                                     </div>
                                   )}
                                   {data.bmi && (
-                                    <div className="flex items-center justify-between gap-4">
-                                      <span className="text-sm font-semibold text-sky-600 dark:text-sky-400 flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-sky-500"></div>BMI</span>
-                                      <span className="font-black text-slate-800 dark:text-slate-100">{data.bmi}</span>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span className="text-xs font-semibold text-sky-600 dark:text-sky-400 flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-sky-500"></div>BMI</span>
+                                      <span className="font-black text-xs text-slate-800 dark:text-slate-100">{data.bmi}</span>
                                     </div>
                                   )}
                                   {data.waist && (
-                                    <div className="flex items-center justify-between gap-4">
-                                      <span className="text-sm font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber-500"></div>Vòng eo</span>
-                                      <span className="font-black text-slate-800 dark:text-slate-100">{data.waist} cm</span>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>Vòng eo</span>
+                                      <span className="font-black text-xs text-slate-800 dark:text-slate-100">{data.waist} cm</span>
                                     </div>
                                   )}
                                 </div>
                                 {data.note && (
-                                  <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
-                                    <p className="text-slate-600 dark:text-slate-300 text-sm italic max-w-[220px]">
+                                  <div className="mt-1 pt-1.5 border-t border-slate-100 dark:border-slate-700">
+                                    <p className="text-slate-500 dark:text-slate-400 text-[10px] italic max-w-[180px] line-clamp-2">
                                       "{data.note}"
                                     </p>
                                   </div>
@@ -1669,7 +1898,7 @@ function Dashboard({
                     </LineChart>
                   </ResponsiveContainer>
                   {parsedMetrics.length > 5 && (
-                    <div className="px-10 mt-6 mb-2">
+                    <div className="px-10 mt-6 mb-2 print:hidden">
                        <Slider.Root
                         className="relative flex items-center select-none touch-none w-full h-5"
                         value={[
@@ -1698,10 +1927,10 @@ function Dashboard({
                       </Slider.Root>
                       <div className="flex justify-between text-xs font-medium text-slate-400 mt-2">
                         <span>
-                          {new Date(parsedMetrics[Math.max(0, Math.min(brushRange.startIndex ?? defaultBrushStartIndex, parsedMetrics.length - 1))].timestampForChart).toLocaleDateString("vi-VN", {day: "2-digit", month: "2-digit"})}
+                          {formatToDDMMYY(parsedMetrics[Math.max(0, Math.min(brushRange.startIndex ?? defaultBrushStartIndex, parsedMetrics.length - 1))].timestampForChart)}
                         </span>
                         <span>
-                           {new Date(parsedMetrics[Math.max(0, Math.min(brushRange.endIndex ?? parsedMetrics.length - 1, parsedMetrics.length - 1))].timestampForChart).toLocaleDateString("vi-VN", {day: "2-digit", month: "2-digit"})}
+                           {formatToDDMMYY(parsedMetrics[Math.max(0, Math.min(brushRange.endIndex ?? parsedMetrics.length - 1, parsedMetrics.length - 1))].timestampForChart)}
                         </span>
                       </div>
                     </div>
@@ -1786,22 +2015,22 @@ function Dashboard({
                 </h2>
               </div>
               {sortedMetrics.length > 0 ? (
-                <div className="max-h-[350px] overflow-y-auto">
-                  <table className="w-full text-left text-sm">
+                <div className="max-h-[350px] overflow-y-auto print:max-h-none print:overflow-visible">
+                  <table className="w-full text-left text-sm print:text-xs">
                     <thead className="bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 sticky top-0 z-10 shadow-[0_1px_2px_0_rgba(0,0,0,0.02)]">
                       <tr>
                         <th className="px-6 py-4 font-bold">Ngày</th>
                         <th className="px-6 py-4 font-bold">Cân nặng</th>
-                        <th className="px-6 py-4 font-bold hidden sm:table-cell">
+                        <th className="px-6 py-4 font-bold hidden sm:table-cell print:table-cell">
                           Chiều cao
                         </th>
-                        <th className="px-6 py-4 font-bold hidden sm:table-cell">
+                        <th className="px-6 py-4 font-bold hidden sm:table-cell print:table-cell">
                           BMI
                         </th>
-                        <th className="px-6 py-4 font-bold hidden sm:table-cell">
+                        <th className="px-6 py-4 font-bold hidden sm:table-cell print:table-cell">
                           Waist
                         </th>
-                        <th className="px-6 py-4 font-bold text-right">
+                        <th className="px-6 py-4 font-bold text-right print:hidden">
                           Tuỳ chọn
                         </th>
                       </tr>
@@ -1814,7 +2043,7 @@ function Dashboard({
                         >
                           <td className="px-6 py-5">
                             <div className="text-slate-900 dark:text-slate-200 font-bold">
-                              {m.date}
+                              {formatToDDMMYY(m.date)}
                             </div>
                             {m.note && (
                               <div
@@ -1831,22 +2060,22 @@ function Dashboard({
                               kg
                             </span>
                           </td>
-                          <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-bold hidden sm:table-cell">
+                          <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-bold hidden sm:table-cell print:table-cell">
                             {m.height ? `${m.height}` : "-"}{" "}
                             <span className="font-bold text-slate-400 dark:text-slate-500 text-xs">
                               {m.height ? "cm" : ""}
                             </span>
                           </td>
-                          <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-bold hidden sm:table-cell">
+                          <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-bold hidden sm:table-cell print:table-cell">
                             {m.bmi || "-"}
                           </td>
-                          <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-bold hidden sm:table-cell">
+                          <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-bold hidden sm:table-cell print:table-cell">
                             {m.waist ? `${m.waist}` : "-"}{" "}
-                            <span className="font-bold text-slate-400 dark:text-slate-500 text-xs hidden sm:inline">
+                            <span className="font-bold text-slate-400 dark:text-slate-500 text-xs hidden sm:inline print:inline">
                               {m.waist ? "cm" : ""}
                             </span>
                           </td>
-                          <td className="px-6 py-5 text-right">
+                          <td className="px-6 py-5 text-right print:hidden">
                             <button
                               onClick={() => {
                                 if (window.confirm("Bạn có chắc chắn muốn xoá dữ liệu này?")) {
@@ -1950,29 +2179,48 @@ function Dashboard({
                     />
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-3">
-                  <div className="flex-1 min-w-[150px]">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
-                      Sự kiện sắp tới
-                    </label>
-                    <input
-                      type="text"
-                      autoComplete="off"
-                      value={targetEvent}
-                      onChange={(e) => setTargetEvent(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
-                    />
+                <div className="flex flex-col gap-1 w-full relative">
+                  <div className="flex justify-between items-center px-1">
+                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Sự kiện sắp tới
+                      </label>
+                      {(targetEvent || targetDate) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTargetEvent("");
+                            setTargetDate("");
+                          }}
+                          className="flex items-center gap-1 text-rose-500 hover:text-rose-600 text-[10px] font-bold uppercase tracking-wider transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Xoá sự kiện</span>
+                        </button>
+                      )}
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 ml-1">
-                      Ngày sự kiện
-                    </label>
-                    <input
-                      type="date"
-                      value={targetDate}
-                      onChange={(e) => setTargetDate(e.target.value)}
-                      className="w-[140px] px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
-                    />
+                  <div className="flex flex-wrap gap-3">
+                    <div className="flex-1 min-w-[150px]">
+                      <input
+                        type="text"
+                        autoComplete="off"
+                        placeholder="Tên sự kiện"
+                        value={targetEvent}
+                        onChange={(e) => setTargetEvent(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm text-slate-700 dark:text-slate-100"
+                      />
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 text-slate-700 dark:text-slate-100 font-bold top-1/2 -translate-y-1/2 pointer-events-none text-sm">
+                        {targetDate ? formatToDDMMYY(targetDate) : "DD/MM/YY"}
+                      </span>
+                      <input
+                        type="date"
+                        value={targetDate}
+                        onChange={(e) => setTargetDate(e.target.value)}
+                        className="w-[140px] px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border-2 border-slate-100 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 outline-none transition-all font-bold text-sm shadow-sm"
+                        style={{ color: "transparent" }}
+                      />
+                    </div>
                   </div>
                 </div>
                 <div>
