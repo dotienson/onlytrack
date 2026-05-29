@@ -461,6 +461,8 @@ function Dashboard({
     "weight",
   );
 
+  const [brushRange, setBrushRange] = useState<{startIndex?: number; endIndex?: number}>({});
+
   const [showStats, setShowStats] = useState(false);
 
   const isProfileComplete = profile?.nickname && profile?.slogan;
@@ -797,34 +799,74 @@ function Dashboard({
     (isGuest ? "Khách" : user?.displayName?.split(" ")[0] || "Bạn");
 
   const yAxisConfig = useMemo(() => {
+    let visibleMetrics = parsedMetrics;
+    if (parsedMetrics.length > 5) {
+      const start = brushRange.startIndex ?? defaultBrushStartIndex;
+      const end = brushRange.endIndex ?? (parsedMetrics.length - 1);
+      visibleMetrics = parsedMetrics.slice(start, end + 1);
+    }
+
     if (chartType === "weight") {
-      const maxWeight = Math.max(...parsedMetrics.map(m => m.weight), 0);
-      if (maxWeight > 70) {
-        // Start at 50, jump by 5
-        const maxTick = Math.ceil(maxWeight / 5) * 5 + 10; 
+      if (visibleMetrics.length > 0) {
+        const weights = visibleMetrics.map(m => m.weight);
+        const minWeight = Math.min(...weights);
+        const maxWeight = Math.max(...weights);
+        
+        let minDomain = Math.floor(minWeight) - 2;
+        let maxDomain = Math.ceil(maxWeight) + 2;
+        
+        if (minDomain < 0) minDomain = 0;
+        
         const ticks = [];
-        for (let i = 50; i <= maxTick; i += 5) ticks.push(i);
-        return { domain: [50, "auto"], ticks };
+        let step = 5;
+        if (maxDomain - minDomain <= 10) step = 1;
+        else if (maxDomain - minDomain <= 20) step = 2;
+        
+        const startTick = Math.ceil(minDomain / step) * step;
+        for (let i = startTick; i <= maxDomain; i += step) {
+          ticks.push(i);
+        }
+        
+        return { domain: [minDomain, maxDomain], ticks };
       }
-      return {
-        domain: [0, "auto"],
-        ticks: [0, 10, 20, 30, 40, 50, 60, 70, 80]
-      };
+      return { domain: [0, "auto"], ticks: undefined };
     }
     if (chartType === "bmi") {
+      if (visibleMetrics.length > 0) {
+        const bmis = visibleMetrics.map(m => m.bmi || 0).filter(b => b > 0);
+        if (bmis.length > 0) {
+          const minBmi = Math.min(...bmis);
+          const maxBmi = Math.max(...bmis);
+          return {
+            domain: [Math.max(10, Math.floor(minBmi) - 2), Math.ceil(maxBmi) + 2],
+            ticks: undefined
+          };
+        }
+      }
       return {
         domain: [20, 40],
         ticks: undefined
       };
     }
     if (chartType === "waist") {
+      if (visibleMetrics.length > 0) {
+        const waists = visibleMetrics.map(m => m.waist || 0).filter(w => w > 0);
+        if (waists.length > 0) {
+          const minWaist = Math.min(...waists);
+          const maxWaist = Math.max(...waists);
+          return {
+            domain: [Math.max(40, Math.floor(minWaist) - 5), Math.ceil(maxWaist) + 5],
+            ticks: undefined
+          };
+        }
+      }
       return {
         domain: [60, 150],
         ticks: undefined
       };
     }
     return { domain: ["auto", "auto"], ticks: undefined };
-  }, [chartType, parsedMetrics]);
+  }, [chartType, parsedMetrics, brushRange, defaultBrushStartIndex]);
 
   const bentoCard =
     "bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 transition-all hover:shadow-md";
@@ -1607,6 +1649,11 @@ function Dashboard({
                           stroke="#64748b"
                           fill="#f8fafc"
                           startIndex={defaultBrushStartIndex}
+                          onChange={(newRange) => {
+                            if (newRange.startIndex !== undefined && newRange.endIndex !== undefined) {
+                              setBrushRange({ startIndex: newRange.startIndex, endIndex: newRange.endIndex });
+                            }
+                          }}
                           tickFormatter={(val) => {
                             if (!val) return "";
                             const d = new Date(val);
