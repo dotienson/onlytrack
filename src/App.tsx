@@ -49,11 +49,14 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-function TrendDot({ cx, cy, isLast, color, index, data, dataKey, threshold = 0 }: any) {
+function TrendDot({ cx, cy, isLast, color, index, data, dataKey, threshold = 0, step = 1 }: any) {
   if (typeof cx !== "number" || typeof cy !== "number" || isNaN(cx) || isNaN(cy)) {
     return null;
   }
   if (!isLast) {
+    if (step > 1 && index !== 0 && index % step !== 0) {
+      return null;
+    }
     return <circle cx={cx} cy={cy} r={4} fill={color} stroke="#fff" strokeWidth={2} key={index} />;
   }
   let trend: "up" | "down" | "right" = "right";
@@ -809,6 +812,11 @@ function Dashboard({
     }
     return parsedMetrics;
   }, [parsedMetrics, brushRange, defaultBrushStartIndex]);
+
+  const pointDensityStep = useMemo(() => {
+    if (visibleMetrics.length <= 15) return 1;
+    return Math.max(1, Math.ceil(visibleMetrics.length / 20));
+  }, [visibleMetrics]);
 
   const yAxisConfig = useMemo(() => {
     if (chartType === "weight") {
@@ -1583,7 +1591,8 @@ function Dashboard({
                               color="#4f46e5" 
                               data={visibleMetrics} 
                               dataKey="weight" 
-                              threshold={0.5} 
+                              threshold={0.5}
+                              step={pointDensityStep}
                             />
                           )}
                           activeDot={{
@@ -1609,7 +1618,8 @@ function Dashboard({
                               color="#0ea5e9" 
                               data={visibleMetrics} 
                               dataKey="bmi" 
-                              threshold={0} 
+                              threshold={0}
+                              step={pointDensityStep}
                             />
                           )}
                           activeDot={{
@@ -1635,7 +1645,8 @@ function Dashboard({
                               color="#f59e0b" 
                               data={visibleMetrics} 
                               dataKey="waist" 
-                              threshold={0} 
+                              threshold={0}
+                              step={pointDensityStep}
                             />
                           )}
                           activeDot={{
