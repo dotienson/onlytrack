@@ -273,7 +273,7 @@ function MonthlyCheckin({ profile, updateProfile }: any) {
                 <li>Nhấn vào một ngày bất kỳ để thay đổi trạng thái (màu sắc).</li>
                 <li>Tiếp tục nhấn để chuyển đổi qua lại giữa các trạng thái khác nhau.</li>
                 <li>Bạn có thể định nghĩa ý nghĩa của từng màu sắc ở phần chú thích bên dưới.</li>
-                <li>Hệ thống sẽ tự động lưu sau mỗi lần nhấn!</li>
+                <li>Ứng dụng sẽ tự động lưu sau mỗi lần nhấn!</li>
               </ul>
               <button 
                 onClick={() => setShowInfo(false)}
@@ -1884,10 +1884,6 @@ function Dashboard({
             {/* Summary Card */}
             {summaryData && summaryData.hasData && (
               <div className={cn(bentoCard, "flex flex-col relative overflow-hidden group")}>
-                {/* Decorative background element background */}
-                <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none transition-transform duration-700 group-hover:scale-150"></div>
-                <div className="absolute bottom-0 left-0 -ml-8 -mb-8 w-24 h-24 bg-sky-500/5 rounded-full blur-2xl pointer-events-none transition-transform duration-700 group-hover:scale-150"></div>
-
                 <div className="flex items-center justify-between relative z-10 mb-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2.5 bg-sky-50 dark:bg-sky-900/30 text-sky-500 rounded-xl shadow-sm border border-sky-100 dark:border-sky-800">
